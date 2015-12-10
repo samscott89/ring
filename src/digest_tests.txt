@@ -55,3 +55,15 @@ Hash = SHA512
 Input = "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"
 Repeat = 1
 Output = 8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909
+
+# SHA-512/256 tests from http://csrc.nist.gov/groups/ST/toolkit/documents/Examples/SHA512_256.pdf
+
+Hash = SHA512_256
+Input = "abc"
+Repeat = 1
+Output =  53048E2681941EF99B2E29B76B4C7DABE4C2D0C634FC6D46E0E2F13107E7AF23
+
+Hash = SHA512_256
+Input = "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"
+Repeat = 1
+Output = 3928E184FB8690F840DA3988121D31BE65CB9D3EF83EE6146FEAC861E19B563A

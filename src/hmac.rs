@@ -340,6 +340,18 @@ mod tests {
         const HELLO_WORLD_GOOD: &'static [u8] = b"hello, world";
         const HELLO_WORLD_BAD:  &'static [u8] = b"hello, worle";
 
+        // TODO: The problem here is that HMAC using SHA512_256 (HMAC-SHA512_256)
+        // is different than HMAC-SHA512 truncated to 256 bits (HMAC-SHA512-256),
+        // and everybody (libsodium, TLS, IPSEC, etc.) use HMAC-SHA512
+        // truncated to 256 bits. Thus, it would be confusing to offer a
+        // HMAC-SHA512_256 instead of a HMAC-SHA512-256, but if we were to land
+        // this patch as-is, that's what would implicitly happen. Also, it
+        // seems a bit dumb to use a truncated digest for HMAC instead of using
+        // the full width of the digest and then truncating the HMAC output. It
+        // seems, then, that it is not actually a good idea to allow any
+        // supported digest algorithm to be used with this HMAC implementation.
+        // Instead , we need to divide digest functions into two types/traits:
+        // "reasonable for HMAC"/"not reasonable for HMAC".
         for d in &digest::test_util::ALL_ALGORITHMS {
             let key = hmac::SigningKey::generate(d).unwrap();
             let signature = hmac::sign(&key, HELLO_WORLD_GOOD);

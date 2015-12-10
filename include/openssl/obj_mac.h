@@ -64,6 +64,10 @@
 #define NID_sha384 673
 #define NID_sha512 674
 
+/* XXX: This is a *ring*-specific value. TODO: Align with BoringSSL and
+ * OpenSSL. */
+#define NID_sha512_256 675
+
 /* ECC named curves */
 #define NID_secp224r1 713
 #define NID_X9_62_prime256v1 415

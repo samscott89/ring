@@ -367,6 +367,29 @@ pub static SHA512: Algorithm = Algorithm {
     nid: 674, // NID_sha512
 };
 
+/// SHA-512/256 as specified in [FIPS 180-4](http://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
+pub static SHA512_256: Algorithm = Algorithm {
+    output_len: 256 / 8,
+    chaining_len: 512 / 8,
+    block_len: 1024 / 8,
+    len_len: 128 / 8,
+    block_data_order: sha512_block_data_order,
+    format_output: sha512_format_output,
+    initial_state: [
+        0x22312194FC2BF72C,
+        0x9F555FA3C84C64C2,
+        0x2393B86B6F53B151,
+        0x963877195940EABD,
+        0x96283EE2A88EFFE3,
+        0xBE5E1E2553863992,
+        0x2B0199FC2C85B8AA,
+        0x0EB72DDC81C52CA2,
+    ],
+
+    nid: 675, // NID_sha512_256. XXX: This is a *ring*-specific value.
+              // TODO: Align with BoringSSL and OpenSSL.
+};
+
 #[inline(always)]
 fn widen_u64(x: usize) -> u64 { x as u64 }
 
@@ -421,11 +444,12 @@ extern {
 pub mod test_util {
     use super::super::digest;
 
-    pub static ALL_ALGORITHMS: [&'static digest::Algorithm; 4] = [
+    pub static ALL_ALGORITHMS: [&'static digest::Algorithm; 5] = [
         &digest::SHA1,
         &digest::SHA256,
         &digest::SHA384,
         &digest::SHA512,
+        &digest::SHA512_256,
     ];
 }
 
@@ -495,6 +519,7 @@ mod tests {
             }
         }
 
+        // TODO: Add SHA-512/256 known answer tests.
         fn run_known_answer_test(digest_alg: &'static digest::Algorithm,
                                  file_name: &str, ) {
             let section_name = &format!("L = {}", digest_alg.output_len);
@@ -517,6 +542,7 @@ mod tests {
             });
         }
 
+        // TODO: Add SHA-512/256 Monte Carlo test.
         fn run_monte_carlo_test(digest_alg: &'static digest::Algorithm,
                                 file_name: &str) {
             let section_name = &format!("L = {}", digest_alg.output_len);
@@ -613,6 +639,7 @@ mod tests {
     test_i_u_f!(test_i_u_f_sha256, digest::SHA256);
     test_i_u_f!(test_i_u_f_sha384, digest::SHA384);
     test_i_u_f!(test_i_u_f_sha512, digest::SHA512);
+    test_i_u_f!(test_i_u_f_sha512_256, digest::SHA512_256);
 
     /// See https://bugzilla.mozilla.org/show_bug.cgi?id=610162. This tests the
     /// calculation of 8GB of the byte 123.
@@ -686,5 +713,14 @@ mod tests {
         0x2D, 0xA5, 0xA9, 0x93, 0xE7, 0x00, 0x45, 0xA8,
         0x49, 0x1A, 0x6B, 0xEC, 0x9C, 0x98, 0xC8, 0x19,
         0xA6, 0xA9, 0x88, 0x3E, 0x2F, 0x09, 0xB9, 0x9A
+    ]);
+    // XXX: This SHA-512/256 test vector was self-generated. TODO: If/when an
+    // alternative implementation is available, verify that it generates the
+    // same digest, and remove this comment.
+    test_large_digest!(test_large_digest_sha512_256, digest::SHA512_256, 256 / 8, [
+        0xFC, 0x8A, 0x98, 0x20, 0xFC, 0x82, 0xD8, 0x55,
+        0xF8, 0xFF, 0x2F, 0x6E, 0xAE, 0x41, 0x60, 0x04,
+        0x08, 0xE9, 0x49, 0xD7, 0xCD, 0x1A, 0xED, 0x22,
+        0xEB, 0x55, 0xE1, 0xFD, 0x80, 0x50, 0x3B, 0x01,
     ]);
 }
