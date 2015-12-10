@@ -187,3 +187,18 @@ fn parse_test_case(current_section: &mut String,
         }
     }
 }
+
+fn encode_der(tag: &[u8], value: &[u8]) -> Vec<u8> {
+    let mut result = Vec::from(tag);
+    match value.len() {
+        n if n < 128 => {
+            result.push(n as u8)
+        },
+        n if n < 256 => {
+            result.push(0);
+            result.push(n as u8);
+        },
+        n if n < 
+        n | n <  => push.
+    }
+}

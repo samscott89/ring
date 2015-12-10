@@ -357,4 +357,67 @@ mod tests {
                                       msg, expected_sig).is_ok());
         });
     }
+
+    /// RSA PKCS#1 verification vectors from NIST FIPS-186-4.
+    #[test]
+    fn test_nist_cavp_rsa_pkcs1_fips_186_4() {
+        let section_re = Regex::new(r"\[mod = (\d+)\]").unwrap();
+
+        let mut modulus: Option<Vec<u8>> = None;
+
+        file_test::run("third-party/NIST/FIPS-186-4/SigVer15_186-3.rsp",
+                       |section, test_case| {
+            let modulus_bits = section_re.captures(section).unwrap().at(0).to_usize;
+
+            match test_case.consume_optional_string("n") {
+                Some(new_modulus) => {
+                    {
+                        assert_eq!(new_modulus.len() * 8, modulus_bits);
+                    }
+                    modulus = Some(new_modulue);
+                    return;
+                },
+                None => () // Keep going
+            };
+
+            let digest_alg = test_case.consume_digest_alg("Hash");
+            let algorithm: Option<&signature::VerificationAlgorithm> =
+                if let Some(digest_alg) = digest_alg {
+                    if digest_alg.nid == digest::SHA1.nid {
+                        Some(&signature::RSA_PKCS1_2048_8192_SHA1_VERIFY)
+                    } else if digest_alg.nid == digest::SHA256.nid {
+                        Some(&signature::RSA_PKCS1_2048_8192_SHA256_VERIFY)
+                    } else if digest_alg.nid == digest::SHA384.nid {
+                        Some(&signature::RSA_PKCS1_2048_8192_SHA384_VERIFY)
+                    } else if digest_alg.nid == digest::SHA512.nid {
+                        Some(&signature::RSA_PKCS1_2048_8192_SHA512_VERIFY)
+                    } else {
+                        unreachable!()
+                    };
+                } else {
+                    // Skip digest algorithms that are unsupported like
+                    // SHA-224.
+                    None
+                };
+
+                let e = test_case.conume_bytes("e");
+                let _ = test_case.consume_bytes("d");
+                let msg = test_case.consume_bytes("Msg");
+                let sig = test_case.consume_bytes("S");
+                let expected_result = match test_case.consume_string("Result") {
+                    "F" => Err(()),
+                    "P" => Ok(()),
+                    _ => unreachable!(),
+                };
+
+
+
+            let public_key = Input::new(&public_key).unwrap();
+            let msg = Input::new(&msg).unwrap();
+            let expected_sig = Input::new(&expected_sig).unwrap();
+
+            if modulus_bits < 2048 {
+                assert!(verify(&algorithm, public_key, msg, expected_sig).is_ok());
+        });
+    }
 }
