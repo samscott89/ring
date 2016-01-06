@@ -53,11 +53,11 @@ pub fn extract_and_expand(salt: &hmac::SigningKey, secret: &[u8], info: &[u8],
 
 /// The HKDF-Extract operation.
 ///
-/// | Parameter               | RFC 5869 Term
-/// |-------------------------|--------------
-/// | salt.digest_algorithm() | Hash
-/// | secret                  | IKM (Input Keying Material)
-/// | [return value]          | PRK
+/// | Parameter                         | RFC 5869 Term
+/// |-----------------------------------|--------------
+/// | salt.algorithm().digest_algorithm | Hash
+/// | secret                            | IKM (Input Keying Material)
+/// | [return value]                    | PRK
 pub fn extract(salt: &hmac::SigningKey, secret: &[u8]) -> hmac::SigningKey {
     // The spec says that if no salt is provided then a key of
     // `digest_alg.output_len` bytes of zeros is used. But, HMAC keys are
@@ -66,7 +66,7 @@ pub fn extract(salt: &hmac::SigningKey, secret: &[u8]) -> hmac::SigningKey {
     // `SigningKey` constructor will automatically do the right thing for a
     // zero-length string.
     let prk = hmac::sign(&salt, secret);
-    hmac::SigningKey::new(salt.digest_algorithm(), prk.as_ref())
+    hmac::SigningKey::new(salt.algorithm(), prk.as_ref())
 }
 
 /// Fills `out` with the output of the HKDF-Expand operation for the given
@@ -89,7 +89,7 @@ pub fn extract(salt: &hmac::SigningKey, secret: &[u8]) -> hmac::SigningKey {
 /// imposed by the HKDF specification, and is necessary to prevent overflow of
 /// the 8-bit iteration counter in the expansion step.
 pub fn expand(prk: &hmac::SigningKey, info: &[u8], out: &mut [u8]) {
-    let digest_alg = prk.digest_algorithm();
+    let digest_alg = prk.algorithm().digest_algorithm;
     assert!(out.len() <= 255 * digest_alg.output_len);
     assert!(digest_alg.block_len >= digest_alg.output_len);
 
@@ -126,13 +126,13 @@ pub fn expand(prk: &hmac::SigningKey, info: &[u8], out: &mut [u8]) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{file_test, hkdf, hmac};
+    use super::super::{digest, file_test, hkdf, hmac};
 
     #[test]
     pub fn hkdf_tests() {
         file_test::run("src/hkdf_tests.txt", |section, test_case| {
             assert_eq!(section, "");
-            let digest_alg = test_case.consume_digest_alg("Hash").unwrap();
+            let digest_alg = test_case.consume_digest_alg("Hash");
             let secret = test_case.consume_bytes("IKM");
             let salt = test_case.consume_bytes("salt");
             let info = test_case.consume_bytes("info");
@@ -143,7 +143,12 @@ mod tests {
 
             let out = test_case.consume_bytes("OKM");
 
-            let salt = hmac::SigningKey::new(digest_alg, &salt);
+            let alg = match digest_alg {
+                Some(d) if d.nid == digest::SHA1.nid => &hmac::HMAC_SHA1,
+                Some(d) if d.nid == digest::SHA256.nid => &hmac::HMAC_SHA256,
+                _ => unreachable!(),
+            };
+            let salt = hmac::SigningKey::new(alg, &salt);
 
             let mut out = vec![0u8; out.len()];
             hkdf::extract_and_expand(&salt, &secret, &info, &mut out);

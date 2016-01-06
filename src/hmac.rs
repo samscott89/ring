@@ -62,10 +62,10 @@
 //! ## Signing a value and verifying it wasn't tampered with
 //!
 //! ```
-//! use ring::{digest, hmac};
+//! use ring::hmac;
 //!
 //! # fn main_with_result() -> Result<(), ()> {
-//! let key = try!(hmac::SigningKey::generate(&digest::SHA256));
+//! let key = try!(hmac::SigningKey::generate(&hmac::HMAC_SHA256));
 //!
 //! let msg = "hello, world";
 //!
@@ -96,12 +96,12 @@
 //! let mut key_value = [0u8; 32];
 //! try!(rand::fill_secure_random(&mut key_value));
 //!
-//! let s_key = hmac::SigningKey::new(&digest::SHA256, key_value.as_ref());
+//! let s_key = hmac::SigningKey::new(&hmac::HMAC_SHA256, key_value.as_ref());
 //! let signature = hmac::sign(&s_key, msg.as_bytes());
 //!
 //! // The receiver (somehow!) knows the key value, and uses it to verify the
 //! // integrity of the message.
-//! let v_key = hmac::VerificationKey::new(&digest::SHA256, key_value.as_ref());
+//! let v_key = hmac::VerificationKey::new(&hmac::HMAC_SHA256, key_value.as_ref());
 //! try!(hmac::verify(&v_key, msg.as_bytes(), signature.as_ref()));
 //! #
 //! # Ok(())
@@ -123,7 +123,7 @@
 //! let mut key_value = [0u8; 48];
 //! try!(rand::fill_secure_random(&mut key_value));
 //!
-//! let s_key = hmac::SigningKey::new(&digest::SHA384, key_value.as_ref());
+//! let s_key = hmac::SigningKey::new(&hmac::HMAC_SHA384, key_value.as_ref());
 //! let mut s_ctx = hmac::SigningContext::with_key(&s_key);
 //! for part in &parts {
 //!     s_ctx.update(part.as_bytes());
@@ -132,7 +132,7 @@
 //!
 //! // The receiver (somehow!) knows the key value, and uses it to verify the
 //! // integrity of the message.
-//! let v_key = hmac::VerificationKey::new(&digest::SHA384, key_value.as_ref());
+//! let v_key = hmac::VerificationKey::new(&hmac::HMAC_SHA384, key_value.as_ref());
 //! let mut msg = Vec::<u8>::new();
 //! for part in &parts {
 //!     msg.extend(part.as_bytes());
@@ -147,6 +147,30 @@
 
 use super::{constant_time, digest, rand};
 
+pub struct Algorithm {
+    pub digest_algorithm: &'static digest::Algorithm,
+}
+
+/// *Deprecated* HMAC using SHA-1 as the digest algorithm.
+pub static HMAC_SHA1: Algorithm = Algorithm {
+    digest_algorithm: &digest::SHA1
+};
+
+/// HMAC using SHA-256 as the digest algorithm.
+pub static HMAC_SHA256: Algorithm = Algorithm {
+    digest_algorithm: &digest::SHA256
+};
+
+/// HMAC using SHA-384 as the digest algorithm.
+pub static HMAC_SHA384: Algorithm = Algorithm {
+    digest_algorithm: &digest::SHA384
+};
+
+/// HMAC using SHA-512 as the digest algorithm.
+pub static HMAC_SHA512: Algorithm = Algorithm {
+    digest_algorithm: &digest::SHA512
+};
+
 /// A key to use for HMAC signing.
 pub struct SigningKey {
     ctx_prototype: SigningContext,
@@ -154,49 +178,49 @@ pub struct SigningKey {
 
 impl SigningKey {
     /// Generate an HMAC signing key for the given digest algorithm using
-    /// |ring::rand|. The key will be `digest_alg.chaining_len` bytes long. The
-    /// key size choice is based on the recommendation of
-    /// [NIST SP 800-107, Section 5.3.4: Security Effect of the HMAC
+    /// |ring::rand|. The key will be `alg.digest_algorithm.chaining_len` bytes
+    /// long. The key size choice is based on the recommendation of [NIST SP
+    /// 800-107, Section 5.3.4: Security Effect of the HMAC
     /// Key](http://csrc.nist.gov/publications/nistpubs/800-107-rev1/sp800-107-rev1.pdf)
     /// and is consistent with the key lengths chosen for TLS as described in
     /// [RFC 5246, Appendix C](https://tools.ietf.org/html/rfc5246#appendix-C).
-    pub fn generate(digest_alg: &'static digest::Algorithm)
-                    -> Result<SigningKey, ()> {
+    pub fn generate(alg: &'static Algorithm) -> Result<SigningKey, ()> {
         // XXX: There should probably be a `digest::MAX_CHAINING_LEN`, but for
         // now `digest::MAX_OUTPUT_LEN` is good enough.
         let mut key_data = [0u8; digest::MAX_OUTPUT_LEN];
-        let key_data = &mut key_data[0..digest_alg.output_len];
+        let key_data = &mut key_data[0..alg.digest_algorithm.output_len];
         try!(rand::fill_secure_random(key_data));
-        Ok(SigningKey::new(digest_alg, key_data))
+        Ok(SigningKey::new(alg, key_data))
     }
 
     /// Construct an HMAC signing key using the given digest algorithm and key
     /// value.
     ///
     /// As specified in RFC 2104, if `key_value` is shorter than the digest
-    /// algorithm's block length (as returned by `digest::Algorithm::block_len`,
-    /// not the digest length returned by `digest::Algorithm::output_len`) then
-    /// it will be padded with zeros. Similarly, if it is longer than the block
-    /// length then it will be compressed using the digest algorithm.
+    /// algorithm's block length (`alg.digest_algorithm.block_len`)&emdash;*not*
+    /// the digest's output length
+    /// (`alg.digest_algorithm.::output_len`)&emdash;then it will be padded
+    /// with zeros. Similarly, if it is longer than the block length then it
+    /// will be compressed using the digest algorithm.
     ///
-    /// You should not use keys larger than the `digest_alg.block_len` because
-    /// the truncation described above reduces their strength to only
-    /// `digest_alg.output_len * 8` bits. Support for such keys is likely to be
-    /// removed in a future version of *ring*.
-    pub fn new(digest_alg: &'static digest::Algorithm, key_value: &[u8])
-               -> SigningKey {
+    /// You should not use keys larger than the `alg.digest_alg.block_len`
+    /// because the truncation described above reduces their strength to only
+    /// `alg.digest_alg.output_len * 8` bits. Support for such keys is likely
+    /// to be removed in a future version of *ring*.
+    pub fn new(alg: &'static Algorithm, key_value: &[u8]) -> SigningKey {
         let mut key = SigningKey {
             ctx_prototype: SigningContext {
-                inner: digest::Context::new(digest_alg),
-                outer: digest::Context::new(digest_alg)
+                inner: digest::Context::new(alg.digest_algorithm),
+                outer: digest::Context::new(alg.digest_algorithm),
+                algorithm: alg,
             },
         };
 
         let key_hash;
-        let key_value = if key_value.len() <= digest_alg.block_len {
+        let key_value = if key_value.len() <= alg.digest_algorithm.block_len {
             key_value
         } else {
-            key_hash = digest::digest(digest_alg, key_value);
+            key_hash = digest::digest(alg.digest_algorithm, key_value);
             key_hash.as_ref()
         };
 
@@ -210,7 +234,7 @@ impl SigningKey {
 
         // If the key is shorter than one block then act as though the key is
         // padded with zeros.
-        for _ in key_value.len()..digest_alg.block_len {
+        for _ in key_value.len()..alg.digest_algorithm.block_len {
             key.ctx_prototype.inner.update(&[IPAD]);
             key.ctx_prototype.outer.update(&[OPAD]);
         }
@@ -218,8 +242,8 @@ impl SigningKey {
         key
     }
 
-    pub fn digest_algorithm(&self) -> &'static digest::Algorithm {
-        self.ctx_prototype.inner.algorithm()
+    pub fn algorithm(&self) -> &'static Algorithm {
+        self.ctx_prototype.algorithm
     }
 }
 
@@ -231,6 +255,7 @@ impl SigningKey {
 pub struct SigningContext {
     inner: digest::Context,
     outer: digest::Context,
+    algorithm: &'static Algorithm,
 }
 
 impl SigningContext {
@@ -242,6 +267,7 @@ impl SigningContext {
         SigningContext {
             inner: signing_key.ctx_prototype.inner.clone(),
             outer: signing_key.ctx_prototype.outer.clone(),
+            algorithm: signing_key.ctx_prototype.algorithm,
         }
     }
 
@@ -299,9 +325,8 @@ impl VerificationKey {
     /// it will be padded with zeros. Similarly, if it is longer than the block
     /// length then it will be compressed using the digest algorithm.
     #[inline(always)]
-    pub fn new(digest_alg: &'static digest::Algorithm, key_value: &[u8])
-               -> VerificationKey {
-        VerificationKey { wrapped: SigningKey::new(digest_alg, key_value) }
+    pub fn new(alg: &'static Algorithm, key_value: &[u8]) -> VerificationKey {
+        VerificationKey { wrapped: SigningKey::new(alg, key_value) }
     }
 }
 
@@ -342,8 +367,9 @@ mod tests {
         const HELLO_WORLD_GOOD: &'static [u8] = b"hello, world";
         const HELLO_WORLD_BAD:  &'static [u8] = b"hello, worle";
 
-        for d in &digest::test_util::ALL_ALGORITHMS {
-            let key = hmac::SigningKey::generate(d).unwrap();
+        for digest_alg in &digest::test_util::ALL_ALGORITHMS {
+            let alg = hmac_alg_from_digest_alg(digest_alg);
+            let key = hmac::SigningKey::generate(alg).unwrap();
             let signature = hmac::sign(&key, HELLO_WORLD_GOOD);
             assert!(hmac::verify_with_own_key(&key, HELLO_WORLD_GOOD,
                                               signature.as_ref()).is_ok());
@@ -363,11 +389,11 @@ mod tests {
 
             let digest_alg = match digest_alg {
                 Some(digest_alg) => digest_alg,
-                None => { return; } // Unsupported digest algorithm
+                None => { return; } // Skip unsupported digest algorithms
             };
-
-            hmac_test_case_inner(digest_alg, &key_value[..], &input[..],
-                                 &output[..], true);
+            let alg = hmac_alg_from_digest_alg(digest_alg);
+            hmac_test_case_inner(alg, &key_value[..], &input[..], &output[..],
+                                 true);
 
             // Tamper with the input and check that verification fails.
             if input.len() == 0 {
@@ -376,17 +402,15 @@ mod tests {
                 input[0] ^= 1;
             }
 
-            hmac_test_case_inner(digest_alg, &key_value[..], &input[..],
-                                 &output[..], false);
+            hmac_test_case_inner(alg, &key_value[..], &input[..], &output[..],
+                                 false);
         });
     }
 
-    fn hmac_test_case_inner(digest_alg: &'static digest::Algorithm,
-                            key_value: &[u8], input: &[u8], output: &[u8],
-                            is_ok: bool) {
-
-        let s_key = hmac::SigningKey::new(digest_alg, key_value);
-        let v_key = hmac::VerificationKey::new(digest_alg, key_value);
+    fn hmac_test_case_inner(alg: &'static hmac::Algorithm, key_value: &[u8],
+                            input: &[u8], output: &[u8], is_ok: bool) {
+        let s_key = hmac::SigningKey::new(alg, key_value);
+        let v_key = hmac::VerificationKey::new(alg, key_value);
 
         // One-shot API.
         {
@@ -411,6 +435,17 @@ mod tests {
             }
             let signature = s_ctx.sign();
             assert_eq!(is_ok, signature.as_ref() == output);
+        }
+    }
+
+    fn hmac_alg_from_digest_alg(digest_alg: &digest::Algorithm)
+                                -> &'static hmac::Algorithm {
+        match digest_alg.nid {
+            nid if nid == digest::SHA1.nid => &hmac::HMAC_SHA1,
+            nid if nid == digest::SHA256.nid => &hmac::HMAC_SHA256,
+            nid if nid == digest::SHA384.nid => &hmac::HMAC_SHA384,
+            nid if nid == digest::SHA512.nid => &hmac::HMAC_SHA512,
+            _ => unreachable!(),
         }
     }
 }

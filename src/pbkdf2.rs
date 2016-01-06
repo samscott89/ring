@@ -138,14 +138,14 @@ use super::{constant_time, digest, hmac};
 pub fn derive(prf: &'static PRF, iterations: usize, salt: &[u8], secret: &[u8],
               out: &mut [u8]) {
     assert!(iterations >= 1);
-    assert!(out.len() <= prf.digest_alg.output_len);
+    assert!(out.len() <= prf.prf.digest_algorithm.output_len);
 
     // This implementation's performance is asymptotically optimal as described
     // in https://jbp.io/2015/08/11/pbkdf2-performance-matters/. However, it
     // hasn't been optimized to the same extent as fastpbkdf2. In particular,
     // this implementation is probably doing a lot of unnecessary copying.
 
-    let secret = hmac::SigningKey::new(prf.digest_alg, secret);
+    let secret = hmac::SigningKey::new(prf.prf, secret);
 
     // Clear |out|.
     for i in 0..out.len() {
@@ -207,17 +207,17 @@ pub fn verify(prf: &'static PRF, iterations: usize, salt: &[u8], secret: &[u8],
 
 /// A PRF algorithm for use with `derive` and `verify`.
 pub struct PRF {
-    digest_alg: &'static digest::Algorithm,
+    prf: &'static hmac::Algorithm,
 }
 
 /// HMAC-SHA256.
 pub static HMAC_SHA256: PRF  = PRF {
-    digest_alg: &digest::SHA256,
+    prf: &hmac::HMAC_SHA256,
 };
 
 /// HMAC-SHA512.
 pub static HMAC_SHA512: PRF  = PRF {
-    digest_alg: &digest::SHA512,
+    prf: &hmac::HMAC_SHA512,
 };
 
 /// HMAC-SHA1. *Deprecated*.
@@ -228,7 +228,7 @@ pub static HMAC_SHA512: PRF  = PRF {
 /// trade-off does not work well for PBKDF2.
 ///
 pub static HMAC_SHA1: PRF = PRF {
-    digest_alg: &digest::SHA1,
+    prf: &hmac::HMAC_SHA1,
 };
 
 #[cfg(test)]
@@ -245,14 +245,11 @@ mod tests {
             let salt = test_case.consume_bytes("S");
             let dk = test_case.consume_bytes("DK");
 
-            let prf = if digest_alg.nid == digest::SHA1.nid {
-                &pbkdf2::HMAC_SHA1
-            } else if digest_alg.nid ==  digest::SHA256.nid {
-                &pbkdf2::HMAC_SHA256
-            } else if digest_alg.nid == digest::SHA512.nid {
-                &pbkdf2::HMAC_SHA512
-            } else {
-                unimplemented!();
+            let prf = match digest_alg.nid {
+                nid if nid == digest::SHA1.nid => &pbkdf2::HMAC_SHA1,
+                nid if nid == digest::SHA256.nid => &pbkdf2::HMAC_SHA256,
+                nid if nid == digest::SHA512.nid => &pbkdf2::HMAC_SHA512,
+                _ => unreachable!(),
             };
 
             let mut out = vec![0u8; dk.len()];
