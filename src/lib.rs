@@ -12,6 +12,12 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+#![no_std]
+
+#[cfg(test)]
+#[macro_use(format, print, println, vec)]
+extern crate std;
+
 #[cfg(test)]
 extern crate rustc_serialize;
 

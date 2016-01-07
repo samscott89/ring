@@ -23,7 +23,7 @@
 //!
 //! Go analog: [`crypto.cipher.AEAD`](https://golang.org/pkg/crypto/cipher/#AEAD)
 
-use std;
+use core;
 use super::{c, ffi};
 
 /// A key for authenticating and decrypting (&ldquo;opening&rdquo;)
@@ -208,7 +208,7 @@ impl Key {
         ffi::map_bssl_result(unsafe {
             (self.algorithm.init)(
                     self.ctx_buf.as_mut_ptr(),
-                    std::mem::size_of::<[u64; KEY_CTX_BUF_ELEMS]>(),
+                    core::mem::size_of::<[u64; KEY_CTX_BUF_ELEMS]>(),
                     key_bytes.as_ptr(), key_bytes.len())
         })
     }
@@ -417,7 +417,7 @@ extern {
 
 #[cfg(test)]
 mod tests {
-
+    use std::vec::Vec;
     use super::super::{aead, file_test};
     use rustc_serialize::hex::ToHex;
 

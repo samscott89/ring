@@ -14,9 +14,9 @@
 
 //! Key agreement: ECDH.
 
+use core;
 use super::{c, digest, ecc, ffi};
 use super::input::Input;
-use std;
 
 /// A key agreement algorithm.
 pub struct Algorithm {
@@ -169,7 +169,7 @@ pub extern fn SHA512_5(out: *mut u8, out_len: c::size_t,
                     part_len: c::size_t) {
         if part_len != 0 {
             assert!(!part.is_null());
-            ctx.update(unsafe { std::slice::from_raw_parts(part, part_len) });
+            ctx.update(unsafe { core::slice::from_raw_parts(part, part_len) });
         }
     }
 
@@ -181,7 +181,7 @@ pub extern fn SHA512_5(out: *mut u8, out_len: c::size_t,
     maybe_update(&mut ctx, part5, part5_len);
     let digest = ctx.finish();
     let digest = digest.as_ref();
-    let out = unsafe { std::slice::from_raw_parts_mut(out, out_len) };
+    let out = unsafe { core::slice::from_raw_parts_mut(out, out_len) };
     assert_eq!(out.len(), digest.len());
     for i in 0..digest.len() {
         out[i] = digest[i];

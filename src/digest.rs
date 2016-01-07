@@ -431,6 +431,7 @@ pub mod test_util {
 
 #[cfg(test)]
 mod tests {
+    use std::vec::Vec;
     use super::super::{digest, file_test};
 
     /// Test vectors from BoringSSL.
@@ -458,6 +459,7 @@ mod tests {
     }
 
     mod shavs {
+        use std::vec::Vec;
         use super::super::super::{digest, file_test};
         use rustc_serialize::hex::ToHex;
 
