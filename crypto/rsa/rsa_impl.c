@@ -72,8 +72,8 @@ static int mod_exp(BIGNUM *r0, const BIGNUM *I, RSA *rsa, BN_CTX *ctx);
 static int rsa_private_transform(RSA *rsa, uint8_t *out, const uint8_t *in,
                                  size_t len);
 
-static int check_modulus_and_exponent_sizes(const RSA *rsa) {
-  unsigned rsa_bits = BN_num_bits(rsa->n);
+static int check_modulus_and_exponent_sizes(const BIGNUM *n, const BIGNUM *e) {
+  unsigned rsa_bits = BN_num_bits(n);
 
   if (rsa_bits > 16 * 1024) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_MODULUS_TOO_LARGE);
@@ -91,7 +91,7 @@ static int check_modulus_and_exponent_sizes(const RSA *rsa) {
    * [3] https://msdn.microsoft.com/en-us/library/aa387685(VS.85).aspx */
   static const unsigned kMaxExponentBits = 33;
 
-  if (BN_num_bits(rsa->e) > kMaxExponentBits) {
+  if (BN_num_bits(e) > kMaxExponentBits) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_E_VALUE);
     return 0;
   }
@@ -104,7 +104,7 @@ static int check_modulus_and_exponent_sizes(const RSA *rsa) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_KEY_SIZE_TOO_SMALL);
     return 0;
   }
-  assert(BN_ucmp(rsa->n, rsa->e) > 0);
+  assert(BN_ucmp(n, e) > 0);
 
   return 1;
 }
@@ -126,7 +126,7 @@ int RSA_encrypt(RSA *rsa, size_t *out_len, uint8_t *out, size_t max_out,
     return 0;
   }
 
-  if (!check_modulus_and_exponent_sizes(rsa)) {
+  if (!check_modulus_and_exponent_sizes(rsa->n, rsa->e)) {
     return 0;
   }
 
@@ -426,35 +426,35 @@ err:
   return ret;
 }
 
-/* rsa_verify_raw verifies |in_len| bytes of signature from |in| using the
- * public key from |rsa| and writes, at most, |max_out| bytes of plaintext to
- * |out|. The |max_out| argument must be, at least, |RSA_size| in order to
- * ensure success.
+/* rsa_verify_raw verifies |in_len| bytes of signature from |in| using the RSA
+ * public key with modulus |n| and exponent |e|. |rsa_size| must be the size of
+ * the key as would be reported by |RSA_size|. |rsa_verify_raw| writes, at most,
+ * |max_out| bytes of plaintext to |out|. The |max_out| argument must be, at
+ * least, |rsa_size| bytes in order to ensure success.
  *
  * It returns 1 on success or zero on error.
  *
  * The |padding| argument must be one of the |RSA_*_PADDING| values. */
-int rsa_verify_raw(RSA *rsa, size_t *out_len, uint8_t *out, size_t max_out,
+int rsa_verify_raw(const BIGNUM *n, const BIGNUM *e, size_t rsa_size,
+                   size_t *out_len, uint8_t *out, size_t max_out,
                    const uint8_t *in, size_t in_len, int padding) {
-  const unsigned rsa_size = RSA_size(rsa);
   BIGNUM *f, *result;
   int ret = 0;
   int r = -1;
   uint8_t *buf = NULL;
-  BN_CTX *ctx = NULL;
 
   if (max_out < rsa_size) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_OUTPUT_BUFFER_TOO_SMALL);
     return 0;
   }
 
-  if (!check_modulus_and_exponent_sizes(rsa)) {
+  if (!check_modulus_and_exponent_sizes(n, e)) {
     return 0;
   }
 
-  ctx = BN_CTX_new();
+  BN_CTX *ctx = BN_CTX_new();
   if (ctx == NULL) {
-    goto err;
+    return 0;
   }
 
   BN_CTX_start(ctx);
@@ -485,18 +485,12 @@ int rsa_verify_raw(RSA *rsa, size_t *out_len, uint8_t *out, size_t max_out,
     goto err;
   }
 
-  if (BN_ucmp(f, rsa->n) >= 0) {
+  if (BN_ucmp(f, n) >= 0) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
     goto err;
   }
 
-  if (rsa->flags & RSA_FLAG_CACHE_PUBLIC) {
-    if (BN_MONT_CTX_set_locked(&rsa->mont_n, &rsa->lock, rsa->n, ctx) == NULL) {
-      goto err;
-    }
-  }
-
-  if (!BN_mod_exp_mont(result, f, rsa->e, rsa->n, ctx, rsa->mont_n)) {
+  if (!BN_mod_exp_mont(result, f, e, n, ctx, NULL)) {
     goto err;
   }
 
@@ -525,10 +519,8 @@ int rsa_verify_raw(RSA *rsa, size_t *out_len, uint8_t *out, size_t max_out,
   }
 
 err:
-  if (ctx != NULL) {
-    BN_CTX_end(ctx);
-    BN_CTX_free(ctx);
-  }
+  BN_CTX_end(ctx);
+  BN_CTX_free(ctx);
   if (padding != RSA_NO_PADDING) {
     OPENSSL_free(buf);
   }

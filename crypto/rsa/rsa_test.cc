@@ -365,7 +365,7 @@ static bool TestOnlyDGiven() {
     return false;
   }
 
-  const uint8_t kDummyHash[16] = {0};
+  static const uint8_t kDummyHash[32] = {0};
 
   if (!RSA_sign(NID_sha256, kDummyHash, sizeof(kDummyHash), buf, &buf_len,
                 key.get())) {
@@ -446,49 +446,53 @@ static bool TestASN1() {
   }
   delete_der.reset(der);
 
-  // Public keys may be parsed back out.
-  rsa.reset(RSA_public_key_from_bytes(der, der_len));
-  if (!rsa || rsa->p != NULL || rsa->q != NULL) {
+  // *ring* does not have |RSA_public_key_from_bytes|, so test
+  // |RSA_public_key_to_bytes| by verifying that the serialized public key
+  // works for verifying signatures created with the private key.
+  static const uint8_t kDummyHash[32] = {0};
+  uint8_t sig[8192 / 8];
+  unsigned sig_len;
+  if (!RSA_sign(NID_sha256, kDummyHash, sizeof(kDummyHash), sig, &sig_len,
+                rsa.get())) {
+    fprintf(stderr, "RSA_sign failed in TestASN1.\n");
     return false;
   }
-
-  // Serializing the result round-trips.
-  uint8_t *der2;
-  size_t der2_len;
-  if (!RSA_public_key_to_bytes(&der2, &der2_len, rsa.get())) {
+  uint8_t *public_key_der;
+  size_t public_key_der_len;
+  if (!RSA_public_key_to_bytes(&public_key_der, &public_key_der_len, rsa.get())) {
+    fprintf(stderr, "RSA_public_key_to_bytes failed in TestASN1.\n");
     return false;
   }
-  ScopedOpenSSLBytes delete_der2(der2);
-  if (der_len != der2_len || memcmp(der, der2, der_len) != 0) {
+  ScopedOpenSSLBytes delete_public_key_der(public_key_der);
+  if (!RSA_verify_pkcs1_signed_digest(512, 8192, NID_sha256, kDummyHash,
+                                      sizeof(kDummyHash), sig, sig_len,
+                                      public_key_der, public_key_der_len)) {
+    fprintf(stderr, "RSA_verify_pkcs1_signed_digest failed in TestASN1.\n");
     return false;
   }
-
-  // Public keys cannot be serialized as private keys.
-  if (RSA_private_key_to_bytes(&der, &der_len, rsa.get())) {
-    OPENSSL_free(der);
-    return false;
-  }
-  ERR_clear_error();
 
   // Public keys with negative moduli are invalid.
-  rsa.reset(RSA_public_key_from_bytes(kEstonianRSAKey,
-                                      sizeof(kEstonianRSAKey)));
-  if (rsa) {
-    return false;
-  }
+  // XXX/TODO: We cannot test this without a signature from such a public key.
+  //rsa.reset(RSA_public_key_from_bytes(kEstonianRSAKey,
+  //                                    sizeof(kEstonianRSAKey)));
+  //if (rsa) {
+  //  return false;
+  //}
+
   ERR_clear_error();
 
   return true;
 }
 
+// XXX/TODO
 static bool TestBadExponent() {
-  ScopedRSA rsa(RSA_public_key_from_bytes(kExponent1RSAKey,
-                                          sizeof(kExponent1RSAKey)));
-
-  if (rsa) {
-    fprintf(stderr, "kExponent1RSAKey parsed but should have failed.\n");
-    return false;
-  }
+  //ScopedRSA rsa(RSA_public_key_from_bytes(kExponent1RSAKey,
+  //                                        sizeof(kExponent1RSAKey)));
+  //
+  //if (rsa) {
+  //  fprintf(stderr, "kExponent1RSAKey parsed but should have failed.\n");
+  //  return false;
+  //}
 
   ERR_clear_error();
   return true;

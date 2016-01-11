@@ -56,10 +56,12 @@
 
 #include <openssl/rsa.h>
 
+#include <assert.h>
 #include <limits.h>
 #include <string.h>
 
 #include <openssl/bn.h>
+#include <openssl/bytestring.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
 #include <openssl/obj_mac.h>
@@ -69,8 +71,9 @@
 #include "../internal.h"
 
 
-static int rsa_verify(int hash_nid, const uint8_t *msg, size_t msg_len,
-                      const uint8_t *sig, size_t sig_len, RSA *rsa);
+static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t rsa_size,
+                      int hash_nid, const uint8_t *msg, size_t msg_len,
+                      const uint8_t *sig, size_t sig_len);
 
 
 int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
@@ -78,29 +81,43 @@ int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
                                    size_t digest_len, const uint8_t *sig,
                                    size_t sig_len, const uint8_t *rsa_key,
                                    const size_t rsa_key_len) {
-  /* TODO(perf): Avoid all the overhead of allocating an |RSA| on the heap and
-   * dealing with the mutex and whatnot. */
+  BIGNUM n;
+  BN_init(&n);
 
-  RSA *key = RSA_public_key_from_bytes(rsa_key, rsa_key_len);
-  if (key == NULL) {
-    return 0;
-  }
+  BIGNUM e;
+  BN_init(&e);
 
   int ret = 0;
 
-  size_t len = RSA_size(key);
-  if (len > SIZE_MAX / 8 || len * 8 < min_bits || len * 8 > max_bits) {
+  CBS cbs;
+  CBS_init(&cbs, rsa_key, rsa_key_len);
+  CBS child;
+  if (!CBS_get_asn1(&cbs, &child, CBS_ASN1_SEQUENCE) ||
+      !BN_parse_asn1_unsigned(&child, &n) ||
+      !BN_parse_asn1_unsigned(&child, &e) ||
+      CBS_len(&child) != 0) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_ENCODING);
+    goto err;
+  }
+  if (!BN_is_odd(&e) ||
+      BN_num_bits(&e) < 2) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_RSA_PARAMETERS);
+    goto err;
+  }
+
+  size_t rsa_size = BN_num_bytes(&n); /* Inlined |RSA_size|. */
+  if (rsa_size > SIZE_MAX / 8 ||
+      rsa_size * 8 < min_bits ||
+      rsa_size * 8 > max_bits) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_KEY_SIZE_TOO_SMALL); /* XXX: Or too big. */
     goto err;
   }
 
-  /* Don't cache the intermediate values since we're not reusing the key. */
-  key->flags &= ~RSA_FLAG_CACHE_PUBLIC;
-
-  ret = rsa_verify(hash_nid, digest, digest_len, sig, sig_len, key);
+  ret = rsa_verify(&n, &e, rsa_size, hash_nid, digest, digest_len, sig, sig_len);
 
 err:
-  RSA_free(key);
+  BN_free(&n);
+  BN_free(&e);
   return ret;
 }
 
@@ -292,7 +309,9 @@ finish:
 }
 
 /* rsa_verify verifies that |sig_len| bytes from |sig| are a valid,
- * RSASSA-PKCS1-v1_5 signature of |msg_len| bytes at |msg| by |rsa|.
+ * RSASSA-PKCS1-v1_5 signature of |msg_len| bytes at |msg| by the RSA public
+ * key with modulus |n| and exponent |e|. |rsa_size| must be the size of the
+ * key as would be reported by |RSA_size|.
  *
  * The |hash_nid| argument identifies the hash function used to calculate |in|
  * and is embedded in the resulting signature in order to prevent hash
@@ -302,9 +321,9 @@ finish:
  *
  * WARNING: this differs from the original, OpenSSL RSA_verify function
  * which additionally returned -1 on error. */
-static int rsa_verify(int hash_nid, const uint8_t *msg, size_t msg_len,
-                      const uint8_t *sig, size_t sig_len, RSA *rsa) {
-  const size_t rsa_size = RSA_size(rsa);
+static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t rsa_size,
+                      int hash_nid, const uint8_t *msg, size_t msg_len,
+                      const uint8_t *sig, size_t sig_len) {
   uint8_t *buf = NULL;
   int ret = 0;
   uint8_t *signed_msg = NULL;
@@ -327,7 +346,7 @@ static int rsa_verify(int hash_nid, const uint8_t *msg, size_t msg_len,
     return 0;
   }
 
-  if (!rsa_verify_raw(rsa, &len, buf, rsa_size, sig, sig_len,
+  if (!rsa_verify_raw(n, e, rsa_size, &len, buf, rsa_size, sig, sig_len,
                       RSA_PKCS1_PADDING)) {
     goto out;
   }
