@@ -12,7 +12,9 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use {aead, c};
+#![allow(unsafe_code)]
+
+use {aead, core, bssl, c};
 
 const AES_128_KEY_LEN: usize = 128 / 8;
 const AES_256_KEY_LEN: usize = 32; // 256 / 8
@@ -29,9 +31,9 @@ pub static AES_128_GCM: aead::Algorithm = aead::Algorithm {
     nonce_len: AES_GCM_NONCE_LEN,
     max_overhead_len: AES_GCM_TAG_LEN,
     tag_len: AES_GCM_TAG_LEN,
-    init: evp_aead_aes_gcm_init,
-    seal: evp_aead_aes_gcm_seal,
-    open: evp_aead_aes_gcm_open,
+    init: aes_gcm_init,
+    seal: aes_gcm_seal,
+    open: aes_gcm_open,
 };
 
 /// AES-256 in GCM mode with 128-bit tags and 96 bit nonces.
@@ -44,10 +46,47 @@ pub static AES_256_GCM: aead::Algorithm = aead::Algorithm {
     nonce_len: AES_GCM_NONCE_LEN,
     max_overhead_len: AES_GCM_TAG_LEN,
     tag_len: AES_GCM_TAG_LEN,
-    init: evp_aead_aes_gcm_init,
-    seal: evp_aead_aes_gcm_seal,
-    open: evp_aead_aes_gcm_open,
+    init: aes_gcm_init,
+    seal: aes_gcm_seal,
+    open: aes_gcm_open,
 };
+
+fn aes_gcm_init(ctx_buf: &mut [u8], key: &[u8]) -> Result<(), ()> {
+    try!(bssl::map_result(unsafe {
+        evp_aead_aes_gcm_init(ctx_buf.as_mut_ptr() as *mut u64,
+                              core::mem::size_of::<[u8; aead::KEY_CTX_BUF_ELEMS]>(),
+                              key.as_ptr(), key.len())
+    }));
+    Ok(())
+}
+
+fn aes_gcm_seal(ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
+                in_prefix_len: usize, in_suffix_len: usize,
+                ad: &[u8]) -> Result<usize, ()> {
+    let mut out_len: c::size_t = 0;
+    try!(bssl::map_result(unsafe {
+        evp_aead_aes_gcm_seal(ctx.as_ptr() as *mut u64, in_out.as_mut_ptr(),
+                              &mut out_len, in_out.len(), nonce.as_ptr(),
+                              in_out.as_ptr().offset(in_prefix_len as isize),
+                              in_out.len() - in_prefix_len - in_suffix_len,
+                              ad.as_ptr(), ad.len())
+    }));
+    Ok(out_len)
+}
+
+fn aes_gcm_open(ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
+                in_prefix_len: usize, in_suffix_len: usize,
+                ad: &[u8]) -> Result<usize, ()> {
+    let mut out_len: c::size_t = 0;
+    try!(bssl::map_result(unsafe {
+        evp_aead_aes_gcm_open(ctx.as_ptr() as *mut u64, in_out.as_mut_ptr(),
+                              &mut out_len, in_out.len(), nonce.as_ptr(),
+                              in_out.as_ptr().offset(in_prefix_len as isize),
+                              in_out.len() - in_prefix_len - in_suffix_len,
+                              ad.as_ptr(), ad.len())
+    }));
+    Ok(out_len)
+}
 
 extern {
     fn evp_aead_aes_gcm_init(ctx_buf: *mut u64, ctx_buf_len: c::size_t,
