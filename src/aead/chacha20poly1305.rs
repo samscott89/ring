@@ -118,23 +118,24 @@ pub fn init(ctx_buf: &mut [u8], key: &[u8]) -> Result<(), ()> {
 fn seal(update: UpdateFn, ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
         in_prefix_len: usize, in_suffix_len: usize,
         ad: &[u8]) -> Result<usize, ()> {
+    let chacha20_key = &ctx[0..CHACHA20_KEY_LEN];
     let in_len = try!(aead::in_len(in_out.len(), in_prefix_len,
                                    in_suffix_len));
     let out_len = try!(aead::seal_out_len(in_len, POLY1305_TAG_LEN));
     unsafe {
-        CRYPTO_chacha_20(in_out.as_mut_ptr().offset(in_prefix_len as isize),
-                         in_out.as_ptr(), in_len,
-                         ctx.as_ptr(), nonce.as_ptr(), 1);
+        CRYPTO_chacha_20(in_out.as_mut_ptr(), in_out[in_prefix_len..].as_ptr(),
+                         in_len, chacha20_key.as_ptr(), nonce.as_ptr(), 1);
     }
     let (ciphertext, tag) = in_out.split_at_mut(in_len);
     let tag = &mut tag[..POLY1305_TAG_LEN];
-    aead_poly1305(update, tag, ctx, nonce, ad, ciphertext);
+    aead_poly1305(update, tag, chacha20_key, nonce, ad, ciphertext);
     Ok(out_len)
 }
 
 fn open(update: UpdateFn, ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
         in_prefix_len: usize, in_suffix_len: usize,
         ad: &[u8]) -> Result<usize, ()> {
+    let chacha20_key = &ctx[0..CHACHA20_KEY_LEN];
     let in_len = try!(aead::in_len(in_out.len(), in_prefix_len,
                                    in_suffix_len));
     let out_len = try!(aead::open_out_len(in_out.len(), in_len,
@@ -142,16 +143,16 @@ fn open(update: UpdateFn, ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
     {
         let plaintext = &in_out[in_prefix_len..in_prefix_len + out_len];
         let mut calculated_tag = [0u8; POLY1305_TAG_LEN];
-        aead_poly1305(update, &mut calculated_tag, ctx, nonce, ad, &plaintext);
+        aead_poly1305(update, &mut calculated_tag, chacha20_key, nonce, ad,
+                      &plaintext);
         let tag_index = in_prefix_len + plaintext.len();
         let received_tag = &in_out[tag_index..tag_index + POLY1305_TAG_LEN];
         try!(constant_time::verify_slices_are_equal(&calculated_tag,
                                                     &received_tag));
     }
     unsafe {
-        CRYPTO_chacha_20(in_out.as_mut_ptr(),
-                         in_out.as_ptr().offset(in_prefix_len as isize),
-                         out_len, ctx.as_ptr(), nonce.as_ptr(), 1);
+        CRYPTO_chacha_20(in_out.as_mut_ptr(), in_out[in_prefix_len..].as_ptr(),
+                         out_len, chacha20_key.as_ptr(), nonce.as_ptr(), 1);
     }
     Ok(out_len)
 }

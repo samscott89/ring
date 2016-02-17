@@ -17,6 +17,11 @@
 
 #![allow(unsafe_code)]
 
+#[inline(always)]
+pub fn u64_from_usize(x: usize) -> u64 {
+    x as u64
+}
+
 pub mod slice {
     use core;
 

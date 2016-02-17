@@ -305,11 +305,12 @@ fn open_out_len(max_out_len: usize, in_len: usize,
 /// AEADs.
 fn in_len(total_in_len: usize, in_prefix_len: usize,
           in_suffix_len: usize) -> Result<usize, ()> {
-    if (in_len as u64) >= (1u64 << 32) * 64 - 64 {
+    let overhead = try!(in_prefix_len.checked_add(in_suffix_len).ok_or(()));
+    let in_len = try!(total_in_len.checked_sub(overhead).ok_or(()));
+    if polyfill::u64_from_usize(in_len) >= (1u64 << 32) * 64 - 64 {
         return Err(())
     }
-    let overhead = try!(in_prefix_len.checked_add(in_suffix_len).ok_or(()));
-    total_in_len.checked_sub(overhead).ok_or(())
+    Ok(in_len)
 }
 
 

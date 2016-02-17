@@ -53,7 +53,7 @@ pub static AES_256_GCM: aead::Algorithm = aead::Algorithm {
 
 fn aes_gcm_init(ctx_buf: &mut [u8], key: &[u8]) -> Result<(), ()> {
     try!(bssl::map_result(unsafe {
-        evp_aead_aes_gcm_init(ctx_buf.as_mut_ptr() as *mut u64,
+        evp_aead_aes_gcm_init(ctx_buf.as_mut_ptr(),
                               core::mem::size_of::<[u8; aead::KEY_CTX_BUF_ELEMS]>(),
                               key.as_ptr(), key.len())
     }));
@@ -65,9 +65,9 @@ fn aes_gcm_seal(ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
                 ad: &[u8]) -> Result<usize, ()> {
     let mut out_len: c::size_t = 0;
     try!(bssl::map_result(unsafe {
-        evp_aead_aes_gcm_seal(ctx.as_ptr() as *mut u64, in_out.as_mut_ptr(),
+        evp_aead_aes_gcm_seal(ctx.as_ptr(), in_out.as_mut_ptr(),
                               &mut out_len, in_out.len(), nonce.as_ptr(),
-                              in_out.as_ptr().offset(in_prefix_len as isize),
+                              in_out[in_prefix_len..].as_ptr(),
                               in_out.len() - in_prefix_len - in_suffix_len,
                               ad.as_ptr(), ad.len())
     }));
@@ -79,9 +79,9 @@ fn aes_gcm_open(ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
                 ad: &[u8]) -> Result<usize, ()> {
     let mut out_len: c::size_t = 0;
     try!(bssl::map_result(unsafe {
-        evp_aead_aes_gcm_open(ctx.as_ptr() as *mut u64, in_out.as_mut_ptr(),
-                              &mut out_len, in_out.len(), nonce.as_ptr(),
-                              in_out.as_ptr().offset(in_prefix_len as isize),
+        evp_aead_aes_gcm_open(ctx.as_ptr(), in_out.as_mut_ptr(), &mut out_len,
+                              in_out.len(), nonce.as_ptr(),
+                              in_out[in_prefix_len..].as_ptr(),
                               in_out.len() - in_prefix_len - in_suffix_len,
                               ad.as_ptr(), ad.len())
     }));
@@ -89,16 +89,16 @@ fn aes_gcm_open(ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
 }
 
 extern {
-    fn evp_aead_aes_gcm_init(ctx_buf: *mut u64, ctx_buf_len: c::size_t,
+    fn evp_aead_aes_gcm_init(ctx_buf: *mut u8, ctx_buf_len: c::size_t,
                              key: *const u8, key_len: c::size_t) -> c::int;
 
-    fn evp_aead_aes_gcm_seal(ctx_buf: *const u64, out: *mut u8,
+    fn evp_aead_aes_gcm_seal(ctx_buf: *const u8, out: *mut u8,
                              out_len: &mut c::size_t, max_out_len: c::size_t,
                              nonce: *const u8, in_: *const u8,
                              in_len: c::size_t, ad: *const u8,
                              ad_len: c::size_t) -> c::int;
 
-    fn evp_aead_aes_gcm_open(ctx_buf: *const u64, out: *mut u8,
+    fn evp_aead_aes_gcm_open(ctx_buf: *const u8, out: *mut u8,
                              out_len: &mut c::size_t, max_out_len: c::size_t,
                              nonce: *const u8, in_: *const u8,
                              in_len: c::size_t, ad: *const u8,
