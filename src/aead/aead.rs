@@ -33,7 +33,6 @@ pub use self::aes_gcm::{AES_128_GCM, AES_256_GCM};
 
 use core;
 use super::{c, bssl, polyfill};
-use self::aes_gcm::AES_GCM_TAG_LEN;
 
 /// A key for authenticating and decrypting (&ldquo;opening&rdquo;)
 /// AEAD-protected data.
@@ -295,7 +294,7 @@ pub struct Algorithm {
 
 /// The maximum value of `Algorithm.max_overhead_len` for the algorithms in
 /// this module.
-pub const MAX_OVERHEAD_LEN: usize = AES_GCM_TAG_LEN;
+pub const MAX_OVERHEAD_LEN: usize = aes_gcm::AES_GCM_TAG_LEN;
 
 type OpenOrSealFn =
     unsafe extern fn(ctx: *const u64, out: *mut u8,
