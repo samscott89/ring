@@ -284,12 +284,12 @@ type OpenOrSealFn =
     fn(ctx: &[u8], nonce: &[u8], in_out: &mut [u8], in_prefix_len: usize,
        in_suffix_len: usize, ad: &[u8]) -> Result<usize, ()>;
 
-/// Determine length of ciphertext that will be sealed
+/// Returns the length of the output (ciphertext + tag) of a seal operation.
 fn seal_out_len(in_len: usize, tag_len: usize) -> Result<usize, ()> {
     in_len.checked_add(tag_len).ok_or(())
 }
 
-/// Determine length of plaintext that will be opened
+/// Returns the length of the output (plaintext) of an open operation.
 fn open_out_len(max_out_len: usize, in_len: usize,
                 tag_len: usize) -> Result<usize, ()> {
     let plaintext_len = try!(in_len.checked_sub(tag_len).ok_or(()));
@@ -299,12 +299,12 @@ fn open_out_len(max_out_len: usize, in_len: usize,
     Ok(plaintext_len)
 }
 
-/// Determine and check the length of the input supplied to AEAD.
-/// |CRYPTO_chacha_20| uses a 32-bit block counter. Therefore we disallow
-/// individual operations that work on more than 256GB at a time, for all
-/// AEADs.
-fn in_len(total_in_len: usize, in_prefix_len: usize,
-          in_suffix_len: usize) -> Result<usize, ()> {
+/// Returns the length of the input plaintext (for sealing) or ciphertext
+/// (for opening). |CRYPTO_chacha_20| uses a 32-bit block counter, so we
+/// disallow individual operations that work on more than 256GB at a time, for
+/// all AEADs.
+fn in_len(total_in_len: usize, in_prefix_len: usize, in_suffix_len: usize)
+          -> Result<usize, ()> {
     let overhead = try!(in_prefix_len.checked_add(in_suffix_len).ok_or(()));
     let in_len = try!(total_in_len.checked_sub(overhead).ok_or(()));
     if polyfill::u64_from_usize(in_len) >= (1u64 << 32) * 64 - 64 {

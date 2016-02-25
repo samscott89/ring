@@ -52,11 +52,10 @@ pub static AES_256_GCM: aead::Algorithm = aead::Algorithm {
 };
 
 fn aes_gcm_init(ctx_buf: &mut [u8], key: &[u8]) -> Result<(), ()> {
-    try!(bssl::map_result(unsafe {
+    bssl::map_result(unsafe {
         evp_aead_aes_gcm_init(ctx_buf.as_mut_ptr(),
                               ctx_buf.len(), key.as_ptr(), key.len())
-    }));
-    Ok(())
+    })
 }
 
 fn aes_gcm_seal(ctx: &[u8], nonce: &[u8], in_out: &mut [u8],

@@ -116,8 +116,8 @@ pub fn init(ctx_buf: &mut [u8], key: &[u8]) -> Result<(), ()> {
 }
 
 fn seal(update: UpdateFn, ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
-        in_prefix_len: usize, in_suffix_len: usize,
-        ad: &[u8]) -> Result<usize, ()> {
+        in_prefix_len: usize, in_suffix_len: usize, ad: &[u8])
+        -> Result<usize, ()> {
     let chacha20_key = &ctx[0..CHACHA20_KEY_LEN];
     let in_len = try!(aead::in_len(in_out.len(), in_prefix_len,
                                    in_suffix_len));
@@ -133,8 +133,8 @@ fn seal(update: UpdateFn, ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
 }
 
 fn open(update: UpdateFn, ctx: &[u8], nonce: &[u8], in_out: &mut [u8],
-        in_prefix_len: usize, in_suffix_len: usize,
-        ad: &[u8]) -> Result<usize, ()> {
+        in_prefix_len: usize, in_suffix_len: usize, ad: &[u8])
+        -> Result<usize, ()> {
     let chacha20_key = &ctx[..CHACHA20_KEY_LEN];
     let in_len = try!(aead::in_len(in_out.len(), in_prefix_len,
                                    in_suffix_len));
