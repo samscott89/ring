@@ -36,7 +36,7 @@
 
 
 #if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && \
-    !defined(OPENSSL_SMALL)
+    !defined(OPENSSL_WINDOWS)
 
 
 #define P256_LIMBS (256 / BN_BITS2)
