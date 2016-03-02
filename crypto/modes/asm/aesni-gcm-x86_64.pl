@@ -97,8 +97,6 @@ _aesni_ctr32_ghash_6x:
 	  vpxor		$rndkey,$inout3,$inout3
 	  vmovups	0x10-0x80($key),$T2	# borrow $T2 for $rndkey
 	vpclmulqdq	\$0x01,$Hkey,$Z3,$Z2
-	xor		%r12,%r12
-	cmp		$in0,$end0
 
 	  vaesenc	$T2,$inout0,$inout0
 	vmovdqu		0x30+8(%rsp),$Ii	# I[4]
@@ -106,24 +104,21 @@ _aesni_ctr32_ghash_6x:
 	vpclmulqdq	\$0x00,$Hkey,$Z3,$T1
 	  vaesenc	$T2,$inout1,$inout1
 	  vpxor		$rndkey,$inout5,$inout5
-	setnc		%r12b
 	vpclmulqdq	\$0x11,$Hkey,$Z3,$Z3
 	  vaesenc	$T2,$inout2,$inout2
 	vmovdqu		0x10-0x20($Xip),$Hkey	# $Hkey^2
-	neg		%r12
 	  vaesenc	$T2,$inout3,$inout3
 	 vpxor		$Z1,$Z2,$Z2
 	vpclmulqdq	\$0x00,$Hkey,$Ii,$Z1
 	 vpxor		$Z0,$Xi,$Xi		# modulo-scheduled
 	  vaesenc	$T2,$inout4,$inout4
 	 vpxor		$Z1,$T1,$Z0
-	and		\$0x60,%r12
 	  vmovups	0x20-0x80($key),$rndkey
 	vpclmulqdq	\$0x10,$Hkey,$Ii,$T1
 	  vaesenc	$T2,$inout5,$inout5
 
 	vpclmulqdq	\$0x01,$Hkey,$Ii,$T2
-	lea		($in0,%r12),$in0
+	lea		0x60($in0),$in0
 	  vaesenc	$rndkey,$inout0,$inout0
 	 vpxor		16+8(%rsp),$Xi,$Xi	# modulo-scheduled [vpxor $Z3,$Xi,$Xi]
 	vpclmulqdq	\$0x11,$Hkey,$Ii,$Hkey
@@ -389,7 +384,7 @@ $code.=<<___;
 .align	32
 aesni_gcm_decrypt:
 	xor	$ret,$ret
-	cmp	\$0x60,$len			# minimal accepted length
+	cmp	\$0x60*2,$len		# minimal accepted length
 	jb	.Lgcm_dec_abort
 
 	lea	(%rsp),%rax			# save stack pointer
@@ -443,7 +438,6 @@ $code.=<<___;
 	vmovdqu		0x50($inp),$Z3		# I[5]
 	lea		($inp),$in0
 	vmovdqu		0x40($inp),$Z0
-	lea		-0xc0($inp,$len),$end0
 	vmovdqu		0x30($inp),$Z1
 	shr		\$4,$len
 	xor		$ret,$ret
@@ -648,7 +642,6 @@ $code.=<<___;
 .Lenc_no_key_aliasing:
 
 	lea		($out),$in0
-	lea		-0xc0($out,$len),$end0
 	shr		\$4,$len
 
 	call		_aesni_ctr32_6x
