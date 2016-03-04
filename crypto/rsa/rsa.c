@@ -81,6 +81,11 @@ int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
                                    size_t digest_len, const uint8_t *sig,
                                    size_t sig_len, const uint8_t *rsa_key,
                                    const size_t rsa_key_len) {
+  if (hash_nid == NID_md5_sha1 && digest_len != SSL_SIG_LENGTH) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_INVALID_MESSAGE_LENGTH);
+    return 0;
+  }
+
   BIGNUM n;
   BN_init(&n);
 
@@ -334,11 +339,6 @@ static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
 
   if (sig_len != rsa_size) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_WRONG_SIGNATURE_LENGTH);
-    return 0;
-  }
-
-  if (hash_nid == NID_md5_sha1 && msg_len != SSL_SIG_LENGTH) {
-    OPENSSL_PUT_ERROR(RSA, RSA_R_INVALID_MESSAGE_LENGTH);
     return 0;
   }
 
