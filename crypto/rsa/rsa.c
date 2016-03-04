@@ -331,7 +331,7 @@ static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
     goto out;
   }
 
-  if (len != signed_msg_len || CRYPTO_memcmp(buf, signed_msg, len) != 0) {
+  if (len != signed_msg_len || memcmp(buf, signed_msg, len) != 0) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_SIGNATURE);
     goto out;
   }
