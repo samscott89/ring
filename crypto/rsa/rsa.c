@@ -74,6 +74,9 @@
 static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
                       size_t max_bits, int hash_nid, const uint8_t *msg,
                       size_t msg_len, const uint8_t *sig, size_t sig_len);
+static int rsa_add_pkcs1_prefix(uint8_t **out_msg, size_t *out_msg_len,
+                                int hash_nid, const uint8_t *msg,
+                                size_t msg_len);
 
 
 int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
@@ -81,11 +84,6 @@ int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
                                    size_t digest_len, const uint8_t *sig,
                                    size_t sig_len, const uint8_t *rsa_key,
                                    const size_t rsa_key_len) {
-  if (hash_nid == NID_md5_sha1 && digest_len != SSL_SIG_LENGTH) {
-    OPENSSL_PUT_ERROR(RSA, RSA_R_INVALID_MESSAGE_LENGTH);
-    return 0;
-  }
-
   BIGNUM n;
   BN_init(&n);
 
@@ -203,34 +201,15 @@ static const struct pkcs1_sig_prefix kPKCS1SigPrefixes[] = {
     },
 };
 
-int RSA_add_pkcs1_prefix(uint8_t **out_msg, size_t *out_msg_len,
-                         int *is_alloced, int hash_nid, const uint8_t *msg,
-                         size_t msg_len) {
-  unsigned i;
-
-  if (hash_nid == NID_md5_sha1) {
-    /* Special case: SSL signature, just check the length. */
-    if (msg_len != SSL_SIG_LENGTH) {
-      OPENSSL_PUT_ERROR(RSA, RSA_R_INVALID_MESSAGE_LENGTH);
-      return 0;
-    }
-
-#if defined __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-#endif
-
-    *out_msg = (uint8_t*) msg;
-
-#if defined __GNUC__
-#pragma GCC diagnostic pop
-#endif
-
-    *out_msg_len = SSL_SIG_LENGTH;
-    *is_alloced = 0;
-    return 1;
-  }
-
+/* rsa_add_pkcs1_prefix builds a version of |msg| prefixed with the DigestInfo
+ * header for the given hash function and sets |out_msg| to point to it. On
+ * successful return, |*out_msg| will point to the allocated output buffer and
+ * |*out_msg_len| will contain its length. It returns one on success and zero
+ * on failure. */
+static int rsa_add_pkcs1_prefix(uint8_t **out_msg, size_t *out_msg_len,
+                                int hash_nid, const uint8_t *msg,
+                                size_t msg_len) {
+  size_t i;
   for (i = 0; kPKCS1SigPrefixes[i].nid != NID_undef; i++) {
     const struct pkcs1_sig_prefix *sig_prefix = &kPKCS1SigPrefixes[i];
     if (sig_prefix->nid != hash_nid) {
@@ -259,7 +238,6 @@ int RSA_add_pkcs1_prefix(uint8_t **out_msg, size_t *out_msg_len,
 
     *out_msg = signed_msg;
     *out_msg_len = signed_msg_len;
-    *is_alloced = 1;
 
     return 1;
   }
@@ -272,13 +250,11 @@ int RSA_sign(int hash_nid, const uint8_t *in, unsigned in_len, uint8_t *out,
              unsigned *out_len, RSA *rsa) {
   const unsigned rsa_size = RSA_size(rsa);
   int ret = 0;
-  uint8_t *signed_msg;
+  uint8_t *signed_msg = NULL;
   size_t signed_msg_len;
-  int signed_msg_is_alloced = 0;
   size_t size_t_out_len;
 
-  if (!RSA_add_pkcs1_prefix(&signed_msg, &signed_msg_len,
-                            &signed_msg_is_alloced, hash_nid, in, in_len)) {
+  if (!rsa_add_pkcs1_prefix(&signed_msg, &signed_msg_len, hash_nid, in, in_len)) {
     return 0;
   }
 
@@ -295,9 +271,7 @@ int RSA_sign(int hash_nid, const uint8_t *in, unsigned in_len, uint8_t *out,
   }
 
 finish:
-  if (signed_msg_is_alloced) {
-    OPENSSL_free(signed_msg);
-  }
+  OPENSSL_free(signed_msg);
   return ret;
 }
 
@@ -335,7 +309,6 @@ static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
   int ret = 0;
   uint8_t *signed_msg = NULL;
   size_t signed_msg_len, len;
-  int signed_msg_is_alloced = 0;
 
   if (sig_len != rsa_size) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_WRONG_SIGNATURE_LENGTH);
@@ -353,8 +326,8 @@ static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
     goto out;
   }
 
-  if (!RSA_add_pkcs1_prefix(&signed_msg, &signed_msg_len,
-                            &signed_msg_is_alloced, hash_nid, msg, msg_len)) {
+  if (!rsa_add_pkcs1_prefix(&signed_msg, &signed_msg_len, hash_nid, msg,
+                            msg_len)) {
     goto out;
   }
 
@@ -367,9 +340,7 @@ static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
 
 out:
   OPENSSL_free(buf);
-  if (signed_msg_is_alloced) {
-    OPENSSL_free(signed_msg);
-  }
+  OPENSSL_free(signed_msg);
   return ret;
 }
 

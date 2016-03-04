@@ -191,14 +191,6 @@ OPENSSL_EXPORT RSA *RSAPrivateKey_dup(const RSA *rsa);
  * returns zero then a more detailed error is available on the error queue. */
 OPENSSL_EXPORT int RSA_check_key(const RSA *rsa);
 
-/* RSA_add_pkcs1_prefix builds a version of |msg| prefixed with the DigestInfo
- * header for the given hash function and sets |out_msg| to point to it. On
- * successful return, |*out_msg| may be allocated memory and, if so,
- * |*is_alloced| will be 1. */
-OPENSSL_EXPORT int RSA_add_pkcs1_prefix(uint8_t **out_msg, size_t *out_msg_len,
-                                        int *is_alloced, int hash_nid,
-                                        const uint8_t *msg, size_t msg_len);
-
 
 /* ASN.1 functions. */
 
