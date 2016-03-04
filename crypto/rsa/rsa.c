@@ -71,9 +71,10 @@
 #include "../internal.h"
 
 
-static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
-                      size_t max_bits, int hash_nid, const uint8_t *msg,
-                      size_t msg_len, const uint8_t *sig, size_t sig_len);
+static int rsa_verify(const uint8_t *rsa_key, size_t rsa_key_len,
+                      size_t min_bits, size_t max_bits, int hash_nid,
+                      const uint8_t *msg, size_t msg_len, const uint8_t *sig,
+                      size_t sig_len);
 static int rsa_add_pkcs1_prefix(uint8_t **out_msg, size_t *out_msg_len,
                                 int hash_nid, const uint8_t *msg,
                                 size_t msg_len);
@@ -84,32 +85,8 @@ int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
                                    size_t digest_len, const uint8_t *sig,
                                    size_t sig_len, const uint8_t *rsa_key,
                                    const size_t rsa_key_len) {
-  BIGNUM n;
-  BN_init(&n);
-
-  BIGNUM e;
-  BN_init(&e);
-
-  int ret = 0;
-
-  CBS cbs;
-  CBS_init(&cbs, rsa_key, rsa_key_len);
-  CBS child;
-  if (!CBS_get_asn1(&cbs, &child, CBS_ASN1_SEQUENCE) ||
-      !BN_parse_asn1_unsigned(&child, &n) ||
-      !BN_parse_asn1_unsigned(&child, &e) ||
-      CBS_len(&child) != 0) {
-    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_ENCODING);
-    goto err;
-  }
-
-  ret = rsa_verify(&n, &e, min_bits, max_bits, hash_nid, digest, digest_len,
-                   sig, sig_len);
-
-err:
-  BN_free(&n);
-  BN_free(&e);
-  return ret;
+  return rsa_verify(rsa_key, rsa_key_len, min_bits, max_bits, hash_nid, digest,
+                    digest_len, sig, sig_len);
 }
 
 RSA *RSA_new(void) {
@@ -288,57 +265,79 @@ finish:
  *
  * WARNING: this differs from the original, OpenSSL RSA_verify function
  * which additionally returned -1 on error. */
-static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
-                      size_t max_bits, int hash_nid, const uint8_t *msg,
-                      size_t msg_len, const uint8_t *sig, size_t sig_len) {
-  if (!BN_is_odd(e) ||
-      BN_num_bits(e) < 2) {
-    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_RSA_PARAMETERS);
-    return 0;
+static int rsa_verify(const uint8_t *rsa_key, size_t rsa_key_len,
+                      size_t min_bits, size_t max_bits, int hash_nid,
+                      const uint8_t *msg, size_t msg_len, const uint8_t *sig,
+                      size_t sig_len) {
+  BIGNUM n;
+  BN_init(&n);
+
+  BIGNUM e;
+  BN_init(&e);
+
+  int ret = 0;
+  uint8_t *buf = NULL;
+  uint8_t *signed_msg = NULL;
+
+  CBS cbs;
+  CBS_init(&cbs, rsa_key, rsa_key_len);
+  CBS child;
+  if (!CBS_get_asn1(&cbs, &child, CBS_ASN1_SEQUENCE) ||
+      !BN_parse_asn1_unsigned(&child, &n) ||
+      !BN_parse_asn1_unsigned(&child, &e) ||
+      CBS_len(&child) != 0) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_ENCODING);
+    goto err;
   }
 
-  size_t rsa_size = BN_num_bytes(n); /* Inlined |RSA_size|. */
+
+  if (!BN_is_odd(&e) ||
+      BN_num_bits(&e) < 2) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_RSA_PARAMETERS);
+    goto err;
+  }
+
+  size_t rsa_size = BN_num_bytes(&n); /* Inlined |RSA_size|. */
   if (rsa_size > SIZE_MAX / 8 ||
       rsa_size * 8 < min_bits ||
       rsa_size * 8 > max_bits) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_KEY_SIZE_TOO_SMALL); /* XXX: Or too big. */
-    return 0;
+    goto err;
   }
 
-  uint8_t *buf = NULL;
-  int ret = 0;
-  uint8_t *signed_msg = NULL;
   size_t signed_msg_len, len;
 
   if (sig_len != rsa_size) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_WRONG_SIGNATURE_LENGTH);
-    return 0;
+    goto err;
   }
 
   buf = OPENSSL_malloc(rsa_size);
   if (!buf) {
     OPENSSL_PUT_ERROR(RSA, ERR_R_MALLOC_FAILURE);
-    return 0;
+    goto err;
   }
 
-  if (!rsa_verify_raw(n, e, rsa_size, &len, buf, rsa_size, sig, sig_len,
+  if (!rsa_verify_raw(&n, &e, rsa_size, &len, buf, rsa_size, sig, sig_len,
                       RSA_PKCS1_PADDING)) {
-    goto out;
+    goto err;
   }
 
   if (!rsa_add_pkcs1_prefix(&signed_msg, &signed_msg_len, hash_nid, msg,
                             msg_len)) {
-    goto out;
+    goto err;
   }
 
   if (len != signed_msg_len || memcmp(buf, signed_msg, len) != 0) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_SIGNATURE);
-    goto out;
+    goto err;
   }
 
   ret = 1;
 
-out:
+err:
+  BN_free(&n);
+  BN_free(&e);
   OPENSSL_free(buf);
   OPENSSL_free(signed_msg);
   return ret;
