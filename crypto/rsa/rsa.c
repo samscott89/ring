@@ -71,22 +71,27 @@
 #include "../internal.h"
 
 
-static int rsa_verify(const uint8_t *rsa_key, size_t rsa_key_len,
+typedef int (*add_padding_prefix_f)(uint8_t **out_msg, size_t *out_msg_len,
+                                    int hash_nid, const uint8_t *msg,
+                                    size_t msg_len);
+
+static int rsa_verify(add_padding_prefix_f add_padding_prefix,
+                      const uint8_t *rsa_key, size_t rsa_key_len,
                       size_t min_bits, size_t max_bits, int hash_nid,
                       const uint8_t *msg, size_t msg_len, const uint8_t *sig,
                       size_t sig_len);
+
 static int rsa_add_pkcs1_prefix(uint8_t **out_msg, size_t *out_msg_len,
                                 int hash_nid, const uint8_t *msg,
                                 size_t msg_len);
-
 
 int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
                                    int hash_nid, const uint8_t *digest,
                                    size_t digest_len, const uint8_t *sig,
                                    size_t sig_len, const uint8_t *rsa_key,
                                    const size_t rsa_key_len) {
-  return rsa_verify(rsa_key, rsa_key_len, min_bits, max_bits, hash_nid, digest,
-                    digest_len, sig, sig_len);
+  return rsa_verify(rsa_add_pkcs1_prefix, rsa_key, rsa_key_len, min_bits,
+                    max_bits, hash_nid, digest, digest_len, sig, sig_len);
 }
 
 RSA *RSA_new(void) {
@@ -253,9 +258,10 @@ finish:
 }
 
 /* rsa_verify verifies that |sig_len| bytes from |sig| are a valid,
- * RSASSA-PKCS1-v1_5 signature of |msg_len| bytes at |msg| by the RSA public
- * key with modulus |n| and exponent |e|. rsa_verify fails if the RSA modulus
- * is not at least |min_bits| or if it is more than |max_bits|.
+ * signature of |msg_len| bytes at |msg| by the RSA public key with modulus |n|
+ * and exponent |e|, using the padding scheme that |add_padding_prefix|
+ * generates.  rsa_verify fails if the RSA modulus is not at least |min_bits|
+ * or if it is more than |max_bits|.
  *
  * The |hash_nid| argument identifies the hash function used to calculate |in|
  * and is embedded in the resulting signature in order to prevent hash
@@ -265,7 +271,8 @@ finish:
  *
  * WARNING: this differs from the original, OpenSSL RSA_verify function
  * which additionally returned -1 on error. */
-static int rsa_verify(const uint8_t *rsa_key, size_t rsa_key_len,
+static int rsa_verify(add_padding_prefix_f add_padding_prefix,
+                      const uint8_t *rsa_key, size_t rsa_key_len,
                       size_t min_bits, size_t max_bits, int hash_nid,
                       const uint8_t *msg, size_t msg_len, const uint8_t *sig,
                       size_t sig_len) {
@@ -323,8 +330,8 @@ static int rsa_verify(const uint8_t *rsa_key, size_t rsa_key_len,
     goto err;
   }
 
-  if (!rsa_add_pkcs1_prefix(&signed_msg, &signed_msg_len, hash_nid, msg,
-                            msg_len)) {
+  if (!add_padding_prefix(&signed_msg, &signed_msg_len, hash_nid, msg,
+                          msg_len)) {
     goto err;
   }
 
