@@ -71,9 +71,9 @@
 #include "../internal.h"
 
 
-static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t rsa_size,
-                      int hash_nid, const uint8_t *msg, size_t msg_len,
-                      const uint8_t *sig, size_t sig_len);
+static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
+                      size_t max_bits, int hash_nid, const uint8_t *msg,
+                      size_t msg_len, const uint8_t *sig, size_t sig_len);
 
 
 int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
@@ -99,21 +99,9 @@ int RSA_verify_pkcs1_signed_digest(size_t min_bits, size_t max_bits,
     OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_ENCODING);
     goto err;
   }
-  if (!BN_is_odd(&e) ||
-      BN_num_bits(&e) < 2) {
-    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_RSA_PARAMETERS);
-    goto err;
-  }
 
-  size_t rsa_size = BN_num_bytes(&n); /* Inlined |RSA_size|. */
-  if (rsa_size > SIZE_MAX / 8 ||
-      rsa_size * 8 < min_bits ||
-      rsa_size * 8 > max_bits) {
-    OPENSSL_PUT_ERROR(RSA, RSA_R_KEY_SIZE_TOO_SMALL); /* XXX: Or too big. */
-    goto err;
-  }
-
-  ret = rsa_verify(&n, &e, rsa_size, hash_nid, digest, digest_len, sig, sig_len);
+  ret = rsa_verify(&n, &e, min_bits, max_bits, hash_nid, digest, digest_len,
+                   sig, sig_len);
 
 err:
   BN_free(&n);
@@ -310,8 +298,8 @@ finish:
 
 /* rsa_verify verifies that |sig_len| bytes from |sig| are a valid,
  * RSASSA-PKCS1-v1_5 signature of |msg_len| bytes at |msg| by the RSA public
- * key with modulus |n| and exponent |e|. |rsa_size| must be the size of the
- * key as would be reported by |RSA_size|.
+ * key with modulus |n| and exponent |e|. rsa_verify fails if the RSA modulus
+ * is not at least |min_bits| or if it is more than |max_bits|.
  *
  * The |hash_nid| argument identifies the hash function used to calculate |in|
  * and is embedded in the resulting signature in order to prevent hash
@@ -321,9 +309,23 @@ finish:
  *
  * WARNING: this differs from the original, OpenSSL RSA_verify function
  * which additionally returned -1 on error. */
-static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t rsa_size,
-                      int hash_nid, const uint8_t *msg, size_t msg_len,
-                      const uint8_t *sig, size_t sig_len) {
+static int rsa_verify(const BIGNUM *n, const BIGNUM *e, size_t min_bits,
+                      size_t max_bits, int hash_nid, const uint8_t *msg,
+                      size_t msg_len, const uint8_t *sig, size_t sig_len) {
+  if (!BN_is_odd(e) ||
+      BN_num_bits(e) < 2) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_RSA_PARAMETERS);
+    return 0;
+  }
+
+  size_t rsa_size = BN_num_bytes(n); /* Inlined |RSA_size|. */
+  if (rsa_size > SIZE_MAX / 8 ||
+      rsa_size * 8 < min_bits ||
+      rsa_size * 8 > max_bits) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_KEY_SIZE_TOO_SMALL); /* XXX: Or too big. */
+    return 0;
+  }
+
   uint8_t *buf = NULL;
   int ret = 0;
   uint8_t *signed_msg = NULL;
