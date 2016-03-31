@@ -64,7 +64,8 @@
 
 static int digest_to_bn(BIGNUM *out, const uint8_t *digest, size_t digest_len,
                         const BIGNUM *order);
-
+static int scalar_from_elem(const EC_GROUP *group, BIGNUM *out,
+                            const BIGNUM *elem);
 
 int ECDSA_sign(int type, const uint8_t *digest, size_t digest_len, uint8_t *sig,
                unsigned int *sig_len, EC_KEY *eckey) {
@@ -124,15 +125,12 @@ int ECDSA_sign(int type, const uint8_t *digest, size_t digest_len, uint8_t *sig,
 
       /* Compute |r|, the X coordinate of |generator * k|. */
       if (!group->meth->mul_private(group, tmp_point, k, NULL, NULL, ctx) ||
-          !EC_POINT_get_affine_coordinates_GFp(group, tmp_point, X, NULL, ctx)) {
+          !EC_POINT_get_affine_coordinates_GFp(group, tmp_point, X, NULL, ctx) ||
+          !scalar_from_elem(group, r, X)) {
         OPENSSL_PUT_ERROR(ECDSA, ERR_R_EC_LIB);
         goto err;
       }
 
-      if (!BN_nnmod(r, X, &group->order, ctx)) {
-        OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
-        goto err;
-      }
     } while (BN_is_zero(r));
 
     /* Compute the inverse of k. We want inverse in constant time, therefore we
@@ -264,18 +262,13 @@ int ECDSA_verify_signed_digest(const EC_GROUP *group, int hash_nid,
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_MALLOC_FAILURE);
     goto err;
   }
-  if (!group->meth->mul_public(group, point, u1, pub_key, u2, ctx)) {
-    OPENSSL_PUT_ERROR(ECDSA, ERR_R_EC_LIB);
-    goto err;
-  }
-  if (!EC_POINT_get_affine_coordinates_GFp(group, point, X, NULL, ctx)) {
-    OPENSSL_PUT_ERROR(ECDSA, ERR_R_EC_LIB);
-    goto err;
-  }
-  if (!BN_nnmod(u1, X, &group->order, ctx)) {
+  if (!group->meth->mul_public(group, point, u1, pub_key, u2, ctx) ||
+      !EC_POINT_get_affine_coordinates_GFp(group, point, X, NULL, ctx) ||
+      !scalar_from_elem(group, u1, X)) {
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
     goto err;
   }
+
   /* if the signature is correct u1 is equal to sig->r */
   ret = (BN_ucmp(u1, sig->r) == 0);
 
@@ -309,6 +302,20 @@ static int digest_to_bn(BIGNUM *out, const uint8_t *digest, size_t digest_len,
   /* If still too long truncate remaining bits with a shift */
   if ((8 * digest_len > num_bits) &&
       !BN_rshift(out, out, 8 - (num_bits & 0x7))) {
+    OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
+    return 0;
+  }
+
+  return 1;
+}
+
+static int scalar_from_elem(const EC_GROUP *group, BIGNUM *out,
+                            const BIGNUM *elem) {
+  /* Use quick reduction, which is allowed because we only support curves
+   * where |q < n < 2*q|, which is what the |BN_num_bits| assertion checks.
+   */
+  assert(BN_num_bits(&group->order) == BN_num_bits(&group->field));
+  if (!BN_mod_sub_quick(out, elem, &group->order, &group->order)) {
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
     return 0;
   }
