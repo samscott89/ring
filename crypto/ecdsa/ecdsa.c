@@ -237,21 +237,24 @@ int ECDSA_verify_signed_digest(const EC_GROUP *group, int hash_nid,
     ret = 0; /* signature is invalid */
     goto err;
   }
-  /* calculate tmp1 = inv(S) mod order */
-  if (!BN_mod_inverse(u2, sig->s, &group->order, ctx)) {
+  /* calculate u2 = inv(S) mod order, encoded in the Montgomery domain. The
+   * two Montgomery multiplications below will each cancel out the Montgomery
+   * encoding. */
+  if (!BN_from_montgomery(u2, sig->s, &group->order_mont, ctx) ||
+      !BN_mod_inverse(u2, u2, &group->order, ctx)) {
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
     goto err;
   }
   if (!digest_to_bn(m, digest, digest_len, &group->order)) {
     goto err;
   }
-  /* u1 = m * tmp mod order */
-  if (!BN_mod_mul(u1, m, u2, &group->order, ctx)) {
+  /* u1 = m * u2 mod order. The Montgomery encoding of |u2| cancels out. */
+  if (!BN_mod_mul_montgomery(u1, m, u2, &group->order_mont, ctx)) {
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
     goto err;
   }
-  /* u2 = r * w mod q */
-  if (!BN_mod_mul(u2, sig->r, u2, &group->order, ctx)) {
+  /* u2 = r * u2 mod q. The Montgomery encoding of |u2| cancels out. */
+  if (!BN_mod_mul_montgomery(u2, sig->r, u2, &group->order_mont, ctx)) {
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
     goto err;
   }
