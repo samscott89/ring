@@ -135,9 +135,13 @@ struct ec_group_st {
   const BIGNUM order_minus_2;
 
   int curve_name; /* optional NID for named curve */
+
   BIGNUM field; /* For curves over GF(p), this is the modulus. */
+  BN_MONT_CTX mont; /* Montgomery structure for |field|. */
+  BIGNUM field_minus_2; /* For curves over GF(p), this is the modulus. */
+
   BIGNUM a, b; /* Curve coefficients. */
-  BN_MONT_CTX mont; /* Montgomery structure. */
+
   BIGNUM one; /* The value one */
 
   const BIGNUM field_minus_order;

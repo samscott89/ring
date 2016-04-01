@@ -143,7 +143,8 @@ static int ec_GFp_mont_point_get_affine_coordinates(const EC_GROUP *group,
 
     if (!group->meth->field_decode(group, Z, &point->Z, ctx) ||
         !group->meth->field_decode(group, Z, Z, ctx) ||
-        !BN_mod_inverse(Z_1, Z, &group->field, ctx)) {
+        !BN_mod_exp_mont_consttime(Z_1, Z, &group->field_minus_2,
+                                   &group->field, ctx, &group->mont)) {
       OPENSSL_PUT_ERROR(EC, ERR_R_BN_LIB);
       goto err;
     }
