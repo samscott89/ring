@@ -129,21 +129,18 @@ struct ec_group_st {
   const EC_METHOD *meth;
 
   const EC_POINT generator;
+
   const BIGNUM order;
   const BN_MONT_CTX order_mont;
   const BIGNUM order_minus_2;
 
   int curve_name; /* optional NID for named curve */
-
-  /* The following members are handled by the method functions,
-   * even if they appear generic */
-
   BIGNUM field; /* For curves over GF(p), this is the modulus. */
-
   BIGNUM a, b; /* Curve coefficients. */
-
   BN_MONT_CTX mont; /* Montgomery structure. */
   BIGNUM one; /* The value one */
+
+  const BIGNUM field_minus_order;
 } /* EC_GROUP */;
 
 EC_GROUP *ec_group_new(const EC_METHOD *meth);

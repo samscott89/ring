@@ -133,6 +133,8 @@ fn ec_group(curve: &NISTCurve) -> String {
     let n = ModP::new(&curve.n).unwrap();
     let n_minus_2 = &n.p - Integer::from_i8(2).unwrap();
 
+    let q_minus_n = &q.p - &q.p;
+
     let one = Integer::one();
     assert_eq!(curve.a, -3);
     let a = &q.p + Integer::from_i8(curve.a).unwrap();
@@ -168,6 +170,8 @@ fn ec_group(curve: &NISTCurve) -> String {
           static const BN_ULONG b_limbs[] = {b_mont};
           static const BN_ULONG one_limbs[] = {one_mont};
         #endif
+          static const BN_ULONG field_minus_order_limbs[] = {q_minus_n};
+
           STATIC_BIGNUM_DIAGNOSTIC_PUSH
 
           static const EC_GROUP group = {{
@@ -195,6 +199,7 @@ fn ec_group(curve: &NISTCurve) -> String {
               FIELD(.n0 =) {{ BN_MONT_CTX_N0(0x{q_n1:x}, 0x{q_n0:x}) }},
             }},
             FIELD(.one =) STATIC_BIGNUM(one_limbs),
+            FIELD(.field_minus_order =) STATIC_BIGNUM(field_minus_order_limbs),
           }};
 
           STATIC_BIGNUM_DIAGNOSTIC_POP
@@ -215,6 +220,8 @@ fn ec_group(curve: &NISTCurve) -> String {
         n_rr = bn_limbs(&n.rr),
         n_n0 = (n.k % (1u64 << 32)) as usize,
         n_n1 = (n.k / (1u64 << 32)) as usize,
+
+        q_minus_n = bn_limbs(&q_minus_n),
 
         one = bn_limbs(&one),
         x = bn_limbs(&generator_x),

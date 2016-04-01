@@ -66,6 +66,10 @@ static int digest_to_bn(BIGNUM *out, const uint8_t *digest, size_t digest_len,
                         const BIGNUM *order);
 static int scalar_from_elem(const EC_GROUP *group, BIGNUM *out,
                             const BIGNUM *elem);
+static int compare_sig_r_and_x(const EC_GROUP *group, int *out_matches,
+                               const BIGNUM *r, const EC_POINT *point,
+                               BN_CTX *ctx);
+
 
 int ECDSA_sign(int type, const uint8_t *digest, size_t digest_len, uint8_t *sig,
                unsigned int *sig_len, EC_KEY *eckey) {
@@ -258,19 +262,54 @@ int ECDSA_verify_signed_digest(const EC_GROUP *group, int hash_nid,
   }
 
   point = EC_POINT_new(group);
-  if (point == NULL) {
-    OPENSSL_PUT_ERROR(ECDSA, ERR_R_MALLOC_FAILURE);
-    goto err;
-  }
-  if (!group->meth->mul_public(group, point, u1, pub_key, u2, ctx) ||
-      !EC_POINT_get_affine_coordinates_GFp(group, point, X, NULL, ctx) ||
-      !scalar_from_elem(group, u1, X)) {
-    OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
+  if (point == NULL ||
+      !group->meth->mul_public(group, point, u1, pub_key, u2, ctx)) {
+    OPENSSL_PUT_ERROR(ECDSA, ERR_R_EC_LIB);
     goto err;
   }
 
-  /* if the signature is correct u1 is equal to sig->r */
-  ret = (BN_ucmp(u1, sig->r) == 0);
+  /* We could do this:
+   *
+   *    if (!EC_POINT_get_affine_coordinates_GFp(group, point, X, NULL, ctx) ||
+   *        !scalar_from_elem(group, u1, X) ||
+   *        BN_ucmp(u1, sig->r) != 0) {
+   *      OPENSSL_PUT_ERROR(ECDSA, ECDSA_R_BAD_SIGNATURE);
+   *      goto err;
+   *    }
+   *    ret = 1;
+   *
+   * However, |EC_POINT_get_affine_coordinates_GFp| does an inversion, which is
+   * quite expensive. Avoid the inversion by using the trick used by Greg
+   * Maxwell in libsecp256k1. Instead of getting the affine |X| coordinate of
+   * |point|, instead convert |sig->r| to Jacobian coordinates by scaling it
+   * by point->Z**2. */
+  if (EC_POINT_is_at_infinity(group, point)) {
+    OPENSSL_PUT_ERROR(ECDSA, ECDSA_R_BAD_SIGNATURE);
+    goto err;
+  }
+  int matches = 0;
+  if (!compare_sig_r_and_x(group, &matches, sig->r, point, ctx)) {
+    OPENSSL_PUT_ERROR(ECDSA, ERR_R_ECDSA_LIB);
+    goto err;
+  }
+  if (!matches) {
+    if (BN_cmp(sig->r, &group->field_minus_order) < 0) {
+      if (!BN_add(u1, sig->r, &group->field_minus_order)) {
+        OPENSSL_PUT_ERROR(ECDSA, ERR_R_BN_LIB);
+        goto err;
+      }
+      if (!compare_sig_r_and_x(group, &matches, u1, point, ctx)) {
+        OPENSSL_PUT_ERROR(ECDSA, ERR_R_ECDSA_LIB);
+        goto err;
+      }
+    }
+    if (!matches) {
+      OPENSSL_PUT_ERROR(ECDSA, ECDSA_R_BAD_SIGNATURE);
+      goto err;
+    }
+  }
+
+  ret = 1;
 
 err:
   BN_CTX_end(ctx);
@@ -321,4 +360,49 @@ static int scalar_from_elem(const EC_GROUP *group, BIGNUM *out,
   }
 
   return 1;
+}
+
+static int compare_sig_r_and_x(const EC_GROUP *group, int *out_matches,
+                               const BIGNUM *r, const EC_POINT *point,
+                               BN_CTX *ctx) {
+  /* The caller should have checked that |point| is not at infinity already. */
+  assert(!BN_is_zero(&point->Z));
+
+  BIGNUM tmp;
+  BN_init(&tmp);
+
+  BIGNUM r_jacobian;
+  BN_init(&r_jacobian);
+
+  const BIGNUM *x_jacobian;
+
+  *out_matches = 0;
+  int ret = 0;
+
+  /* |field_mul| cancels out the Montgomery encoding (if any) of |point->Z|
+   * since |r| is not Montgomery-encoded. */
+  if (!group->meth->field_sqr(group, &tmp, &point->Z, ctx) ||
+      !group->meth->field_mul(group, &r_jacobian, r, &tmp, ctx)) {
+    OPENSSL_PUT_ERROR(ECDSA, ERR_R_EC_LIB);
+    goto err;
+  }
+
+  if (group->meth->field_decode != NULL) {
+    if (!group->meth->field_decode(group, &tmp, &point->X, ctx)) {
+      OPENSSL_PUT_ERROR(ECDSA, ERR_R_EC_LIB);
+      goto err;
+    }
+    x_jacobian = &tmp;
+  } else {
+    x_jacobian = &point->X;
+  }
+
+  *out_matches = BN_cmp(&r_jacobian, x_jacobian) == 0;
+  ret = 1;
+
+err:
+  BN_free(&tmp);
+  BN_free(&r_jacobian);
+
+  return ret;
 }
