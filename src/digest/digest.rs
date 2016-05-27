@@ -38,6 +38,7 @@ macro_rules! u32x2 {
 }
 
 mod sha1;
+mod sha2;
 
 /// A context for multi-step (Init-Update-Finish) digest calculations.
 ///
@@ -323,7 +324,7 @@ pub static SHA256: Algorithm = Algorithm {
     chaining_len: 256 / 8,
     block_len: 512 / 8,
     len_len: 64 / 8,
-    block_data_order: sha256_block_data_order,
+    block_data_order: sha2::sha256_block_data_order,
     format_output: sha256_format_output,
     initial_state: [
         u32x2!(0x6a09e667u32, 0xbb67ae85u32),
@@ -343,7 +344,7 @@ pub static SHA384: Algorithm = Algorithm {
     chaining_len: 512 / 8,
     block_len: 1024 / 8,
     len_len: 128 / 8,
-    block_data_order: sha512_block_data_order,
+    block_data_order: sha2::sha512_block_data_order,
     format_output: sha512_format_output,
     initial_state: [
         0xcbbb9d5dc1059ed8,
@@ -365,7 +366,7 @@ pub static SHA512: Algorithm = Algorithm {
     chaining_len: 512 / 8,
     block_len: 1024 / 8,
     len_len: 128 / 8,
-    block_data_order: sha512_block_data_order,
+    block_data_order: sha2::sha512_block_data_order,
     format_output: sha512_format_output,
     initial_state: [
         0x6a09e667f3bcc908,
@@ -452,11 +453,6 @@ pub extern fn SHA512_4(out: *mut u8, out_len: c::size_t,
     let digest = digest.as_ref();
     let out = unsafe { core::slice::from_raw_parts_mut(out, out_len) };
     polyfill::slice::fill_from_slice(out, digest);
-}
-
-extern {
-    fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8, num: c::size_t);
-    fn sha512_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8, num: c::size_t);
 }
 
 #[cfg(test)]
