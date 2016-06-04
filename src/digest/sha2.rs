@@ -76,14 +76,14 @@ impl Word for W64 {
 }
 
 // SHA256 functions
-#[inline] fn big_s0_256(x: W32) -> W32   { x.rotr(2)  ^ x.rotr(13) ^ x.rotr(22) }
-#[inline] fn big_s1_256(x: W32) -> W32   { x.rotr(6)  ^ x.rotr(11) ^ x.rotr(25) }
+#[inline] fn big_s0_256(x: W32) -> W32   { ((x.rotr(9)  ^ x).rotr(11) ^ x).rotr(2) }
+#[inline] fn big_s1_256(x: W32) -> W32   { ((x.rotr(14) ^ x).rotr(5)  ^ x).rotr(6) }
 #[inline] fn small_s0_256(x: W32) -> W32 { x.rotr(7)  ^ x.rotr(18) ^ (x >> 3) }
 #[inline] fn small_s1_256(x: W32) -> W32 { x.rotr(17) ^ x.rotr(19) ^ (x >> 10) }
 
 // SHA512 functions
-#[inline] fn big_s0_512(x: W64) -> W64   { x.rotr(28)  ^ x.rotr(34) ^ x.rotr(39) }
-#[inline] fn big_s1_512(x: W64) -> W64   { x.rotr(14)  ^ x.rotr(18) ^ x.rotr(41) }
+#[inline] fn big_s0_512(x: W64) -> W64   { ((x.rotr(5)  ^ x).rotr(6) ^ x).rotr(28) }
+#[inline] fn big_s1_512(x: W64) -> W64   { ((x.rotr(23) ^ x).rotr(4) ^ x).rotr(14) }
 #[inline] fn small_s0_512(x: W64) -> W64 { x.rotr(1)  ^ x.rotr(8) ^ (x >> 7) }
 #[inline] fn small_s1_512(x: W64) -> W64 { x.rotr(19) ^ x.rotr(61) ^ (x >> 6) }
 
