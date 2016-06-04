@@ -22,15 +22,15 @@ use std::ops::{Add,BitAnd,BitXor,Shr,Not};
 
 use super::MAX_CHAINING_LEN;
 
-// SHA 224/256: 512-bit blocks
+// SHA-256: 512-bit blocks
 const BLOCK_LEN_256: usize = 512/8;
 
-// SHA 384/512: 1024-bit blocks
+// SHA-384, SHA-512: 1024-bit blocks
 const BLOCK_LEN_512: usize = 1024/8;
 
-// SHA 224/256: State is 256 bits
+// SHA-256: State is 256 bits
 pub const CHAINING_LEN_256: usize = 256 / 8;
-// SHA 384/512: State is 512 bits
+// SHA-384, SHA-512: State is 512 bits
 pub const CHAINING_LEN_512: usize = 512 / 8;
 
 // State as number of words
@@ -88,15 +88,15 @@ impl Word for W64 {
 #[inline] fn small_s1_512(x: W64) -> W64 { x.rotr(19) ^ x.rotr(61) ^ (x >> 6) }
 
 pub unsafe extern fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
-                                      data: *const u8,
-                                      num: c::size_t) {
+                                             data: *const u8,
+                                             num: c::size_t) {
     let data = data as *const [u8; BLOCK_LEN_256];
     let blocks = core::slice::from_raw_parts(data, num);
     sha256_block_data_order_safe(state, blocks)
 }
 
 fn sha256_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
-                         blocks: &[[u8; BLOCK_LEN_256]]) {
+                                blocks: &[[u8; BLOCK_LEN_256]]) {
 
     // Convert state to array of Wrapping<32>
     let state = polyfill::slice::u64_as_u32_mut(state);
@@ -148,15 +148,15 @@ fn sha256_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
 }
 
 pub unsafe extern fn sha512_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
-                                      data: *const u8,
-                                      num: c::size_t) {
+                                             data: *const u8,
+                                             num: c::size_t) {
     let data = data as *const [u8; BLOCK_LEN_512];
     let blocks = core::slice::from_raw_parts(data, num);
     sha512_block_data_order_safe(state, blocks)
 }
 
 fn sha512_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
-                         blocks: &[[u8; BLOCK_LEN_512]]) {
+                                blocks: &[[u8; BLOCK_LEN_512]]) {
 
     // Convert state to array of Wrapping<64>
     let state = polyfill::slice::as_wrapping_mut(state);
