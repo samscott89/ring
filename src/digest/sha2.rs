@@ -16,9 +16,7 @@
 
 use c;
 use core;
-use core::num::Wrapping;
 use polyfill;
-use std::ops::{Add,BitAnd,BitXor,Shr,Not};
 
 use super::MAX_CHAINING_LEN;
 
@@ -37,55 +35,27 @@ pub const CHAINING_LEN_512: usize = 512 / 8;
 const CHAINING_WORDS_256: usize = CHAINING_LEN_256 / 4;
 const CHAINING_WORDS_512: usize = CHAINING_LEN_512 / 8;
 
-
-type W32 = Wrapping<u32>;
-type W64 = Wrapping<u64>;
-
-trait Word: Shr<usize,Output=Self> + Add<Self,Output=Self> + BitAnd<Self,Output=Self> +
-            BitXor<Self,Output=Self> + Not<Output=Self> + Copy + Sized {
-    #[inline]
-    fn ch(x: Self, y: Self, z: Self) -> Self {
-        (x & y) ^ (!x & z)
-    }
-    #[inline]
-    fn parity(x: Self, y: Self, z: Self) -> Self {
-        x ^ y ^ z
-    }
-    #[inline]
-    fn maj(x: Self, y: Self, z: Self) -> Self {
-        (x & y) ^ (x & z) ^ (y & z)
-    }
-
-    // Performs rotate right
-    #[inline]
-    fn rotr(self, n: u32) -> Self;
+macro_rules! ch {
+    ($x:expr, $y:expr, $z:expr) => (($x & $y) ^ (!$x & $z))
 }
-
-impl Word for W32 {
-    #[inline]
-    fn rotr(self, n: u32) -> W32 {
-        Wrapping(self.0.rotate_right(n))
-    }
+macro_rules! parity {
+    ($x:expr, $y:expr, $z:expr) => ($x ^ $y ^ $z)
 }
-
-impl Word for W64 {
-    #[inline]
-    fn rotr(self, n: u32) -> W64 {
-        Wrapping(self.0.rotate_right(n))
-    }
+macro_rules! maj {
+    ($x:expr, $y:expr, $z:expr) => (($x & $y) ^ ($x & $z) ^ ($y & $z))
 }
 
 // SHA256 functions
-#[inline] fn big_s0_256(x: W32) -> W32   { ((x.rotr(9)  ^ x).rotr(11) ^ x).rotr(2) }
-#[inline] fn big_s1_256(x: W32) -> W32   { ((x.rotr(14) ^ x).rotr(5)  ^ x).rotr(6) }
-#[inline] fn small_s0_256(x: W32) -> W32 { x.rotr(7)  ^ x.rotr(18) ^ (x >> 3) }
-#[inline] fn small_s1_256(x: W32) -> W32 { x.rotr(17) ^ x.rotr(19) ^ (x >> 10) }
+#[inline] fn big_s0_256(x: u32) -> u32   { ((x.rotate_right(9)  ^ x).rotate_right(11) ^ x).rotate_right(2) }
+#[inline] fn big_s1_256(x: u32) -> u32   { ((x.rotate_right(14) ^ x).rotate_right(5)  ^ x).rotate_right(6) }
+#[inline] fn small_s0_256(x: u32) -> u32 { x.rotate_right(7)  ^ x.rotate_right(18) ^ (x >> 3) }
+#[inline] fn small_s1_256(x: u32) -> u32 { x.rotate_right(17) ^ x.rotate_right(19) ^ (x >> 10) }
 
 // SHA512 functions
-#[inline] fn big_s0_512(x: W64) -> W64   { ((x.rotr(5)  ^ x).rotr(6) ^ x).rotr(28) }
-#[inline] fn big_s1_512(x: W64) -> W64   { ((x.rotr(23) ^ x).rotr(4) ^ x).rotr(14) }
-#[inline] fn small_s0_512(x: W64) -> W64 { x.rotr(1)  ^ x.rotr(8) ^ (x >> 7) }
-#[inline] fn small_s1_512(x: W64) -> W64 { x.rotr(19) ^ x.rotr(61) ^ (x >> 6) }
+#[inline] fn big_s0_512(x: u64) -> u64   { ((x.rotate_right(5)  ^ x).rotate_right(6) ^ x).rotate_right(28) }
+#[inline] fn big_s1_512(x: u64) -> u64   { ((x.rotate_right(23) ^ x).rotate_right(4) ^ x).rotate_right(14) }
+#[inline] fn small_s0_512(x: u64) -> u64 { x.rotate_right(1)  ^ x.rotate_right(8)  ^ (x >> 7) }
+#[inline] fn small_s1_512(x: u64) -> u64 { x.rotate_right(19) ^ x.rotate_right(61) ^ (x >> 6) }
 
 pub unsafe extern fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
                                              data: *const u8,
@@ -98,23 +68,26 @@ pub unsafe extern fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN 
 fn sha256_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
                                 blocks: &[[u8; BLOCK_LEN_256]]) {
 
-    // Convert state to array of Wrapping<32>
+    // Convert state to array of u32
     let state = polyfill::slice::u64_as_u32_mut(state);
-    let state = polyfill::slice::as_wrapping_mut(state);
     let state = &mut state[..CHAINING_WORDS_256];
     let state = slice_as_array_ref_mut!(state, CHAINING_WORDS_256).unwrap();
 
     // Message schedule
-    let mut w: [W32; 64] = [Wrapping(0); 64];
     for block in blocks {
+        let mut w: [u32; 64] = [0; 64];
         for t in 0..16 {
             let word = slice_as_array_ref!(&block[t * 4..][..4], 4).unwrap();
-            w[t] = Wrapping(polyfill::slice::u32_from_be_u8(word))
+            w[t] =polyfill::slice::u32_from_be_u8(word)
         }
+
         for t in 16..64 {
-            w[t] = small_s1_256(w[t - 2])  + w[t - 7]
-                 + small_s0_256(w[t - 15]) + w[t - 16];
+            w[t] = small_s1_256(w[t - 2])
+                   .wrapping_add(w[t - 7])
+                   .wrapping_add(small_s0_256(w[t - 15]))
+                   .wrapping_add(w[t - 16]);
         }
+
         let mut a = state[0];
         let mut b = state[1];
         let mut c = state[2];
@@ -125,25 +98,28 @@ fn sha256_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
         let mut h = state[7];
 
         for t in 0..64 {
-            let t1 = h + big_s1_256(e) + W32::ch(e, f, g) + Wrapping(K_256[t]) + w[t];
-            let t2 = big_s0_256(a) + W32::maj(a,b,c);
+            let t1 = h.wrapping_add(big_s1_256(e))
+                      .wrapping_add(ch!(e, f, g))
+                      .wrapping_add(K_256[t])
+                      .wrapping_add(w[t]);
+            let t2 = big_s0_256(a).wrapping_add(maj!(a,b,c));
             h = g;
             g = f;
             f = e;
-            e = d + t1;
+            e = d.wrapping_add(t1);
             d = c;
             c = b;
             b = a;
-            a = t1 + t2;
+            a = t1.wrapping_add(t2);
         }
-        state[0] = a + state[0];
-        state[1] = b + state[1];
-        state[2] = c + state[2];
-        state[3] = d + state[3];
-        state[4] = e + state[4];
-        state[5] = f + state[5];
-        state[6] = g + state[6];
-        state[7] = h + state[7];
+        state[0] = a.wrapping_add(state[0]);
+        state[1] = b.wrapping_add(state[1]);
+        state[2] = c.wrapping_add(state[2]);
+        state[3] = d.wrapping_add(state[3]);
+        state[4] = e.wrapping_add(state[4]);
+        state[5] = f.wrapping_add(state[5]);
+        state[6] = g.wrapping_add(state[6]);
+        state[7] = h.wrapping_add(state[7]);
     }
 }
 
@@ -159,19 +135,21 @@ fn sha512_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
                                 blocks: &[[u8; BLOCK_LEN_512]]) {
 
     // Convert state to array of Wrapping<64>
-    let state = polyfill::slice::as_wrapping_mut(state);
     let state = &mut state[..CHAINING_WORDS_512];
     let state = slice_as_array_ref_mut!(state, CHAINING_WORDS_512).unwrap();
 
     // Message schedule Wt
-    let mut w: [W64; 80] = [Wrapping(0); 80];
+    let mut w: [u64; 80] = [0; 80];
     for block in blocks {
         for t in 0..16 {
             let word = slice_as_array_ref!(&block[t * 8..][..8], 8).unwrap();
-            w[t] = Wrapping(polyfill::slice::u64_from_be_u8(word))
+            w[t] = polyfill::slice::u64_from_be_u8(word)
         }
         for t in 16..80 {
-            w[t] = small_s1_512(w[t - 2]) + w[t - 7] + small_s0_512(w[t - 15]) + w[t - 16];
+            w[t] = small_s1_512(w[t - 2])
+                   .wrapping_add(w[t - 7])
+                   .wrapping_add(small_s0_512(w[t - 15]))
+                   .wrapping_add(w[t - 16]);
         }
         let mut a = state[0];
         let mut b = state[1];
@@ -183,25 +161,28 @@ fn sha512_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
         let mut h = state[7];
 
         for t in 0..80 {
-            let t1 = h + big_s1_512(e) + W64::ch(e, f, g) + Wrapping(K_512[t]) + w[t];
-            let t2 = big_s0_512(a) + W64::maj(a,b,c);
+            let t1 = h.wrapping_add(big_s1_512(e))
+                      .wrapping_add(ch!(e, f, g))
+                      .wrapping_add(K_512[t])
+                      .wrapping_add(w[t]);
+            let t2 = big_s0_512(a).wrapping_add(maj!(a,b,c));
             h = g;
             g = f;
             f = e;
-            e = d + t1;
+            e = d.wrapping_add(t1);
             d = c;
             c = b;
             b = a;
-            a = t1 + t2;
+            a = t1.wrapping_add(t2);
         }
-        state[0] = a + state[0];
-        state[1] = b + state[1];
-        state[2] = c + state[2];
-        state[3] = d + state[3];
-        state[4] = e + state[4];
-        state[5] = f + state[5];
-        state[6] = g + state[6];
-        state[7] = h + state[7];
+        state[0] = a.wrapping_add(state[0]);
+        state[1] = b.wrapping_add(state[1]);
+        state[2] = c.wrapping_add(state[2]);
+        state[3] = d.wrapping_add(state[3]);
+        state[4] = e.wrapping_add(state[4]);
+        state[5] = f.wrapping_add(state[5]);
+        state[6] = g.wrapping_add(state[6]);
+        state[7] = h.wrapping_add(state[7]);
     }
 }
 
