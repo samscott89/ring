@@ -75,17 +75,47 @@ fn sha256_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
 
     // Message schedule
     for block in blocks {
-        let mut w: [u32; 64] = [0; 64];
-        for t in 0..16 {
-            let word = slice_as_array_ref!(&block[t * 4..][..4], 4).unwrap();
-            w[t] =polyfill::slice::u32_from_be_u8(word)
+        let mut w: [[u32; 4]; 16] = [[0; 4]; 16];
+
+        for t in 0..4 {
+            for i in 0..4 {
+                let word = slice_as_array_ref!(&block[(4*t + i) * 4..][..4], 4).unwrap();
+                w[t][i] = polyfill::slice::u32_from_be_u8(word); 
+            }
         }
 
-        for t in 16..64 {
-            w[t] = small_s1_256(w[t - 2])
-                   .wrapping_add(w[t - 7])
-                   .wrapping_add(small_s0_256(w[t - 15]))
-                   .wrapping_add(w[t - 16]);
+        let mut x0 = w[0];
+        let mut x1 = w[1];
+        let mut x2 = w[2];
+        let mut x3 = w[3];
+
+        for t in 4..16 {
+            let mut xt = w[t];
+            xt[0] = small_s0_256(x0[1])
+                  .wrapping_add(x0[0])
+                  .wrapping_add(x2[1])
+                  .wrapping_add(small_s1_256(x3[2]));
+
+            xt[1] = small_s0_256(x0[2])
+                  .wrapping_add(x0[1])
+                  .wrapping_add(x2[2])
+                  .wrapping_add(small_s1_256(x3[3]));
+            
+            xt[2] = small_s0_256(x0[3])
+                  .wrapping_add(x0[2])
+                  .wrapping_add(x2[3])
+                  .wrapping_add(small_s1_256(xt[0]));
+            
+            xt[3] = small_s0_256(x1[0])
+                  .wrapping_add(x0[3])
+                  .wrapping_add(x3[0])
+                  .wrapping_add(small_s1_256(xt[1]));
+
+            x0 = x1;
+            x1 = x2;
+            x2 = x3;
+            x3 = xt;
+            w[t] = xt;
         }
 
         let mut a = state[0];
@@ -97,11 +127,54 @@ fn sha256_block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
         let mut g = state[6];
         let mut h = state[7];
 
-        for t in 0..64 {
+        for t in 0..16 {
+            let x = w[t];
             let t1 = h.wrapping_add(big_s1_256(e))
                       .wrapping_add(ch!(e, f, g))
-                      .wrapping_add(K_256[t])
-                      .wrapping_add(w[t]);
+                      .wrapping_add(K_256[4*t])
+                      .wrapping_add(x[0]);
+            let t2 = big_s0_256(a).wrapping_add(maj!(a,b,c));
+            h = g; 
+            g = f;
+            f = e;
+            e = d.wrapping_add(t1);
+            d = c;
+            c = b; 
+            b = a;
+            a = t1.wrapping_add(t2);
+
+            let t1 = h.wrapping_add(big_s1_256(e))
+                      .wrapping_add(ch!(e, f, g))
+                      .wrapping_add(K_256[4*t+1])
+                      .wrapping_add(x[1]);
+            let t2 = big_s0_256(a).wrapping_add(maj!(a,b,c));
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(t1);
+            d = c;
+            c = b;
+            b = a;
+            a = t1.wrapping_add(t2);
+
+            let t1 = h.wrapping_add(big_s1_256(e))
+                      .wrapping_add(ch!(e, f, g))
+                      .wrapping_add(K_256[4*t+2])
+                      .wrapping_add(x[2]);
+            let t2 = big_s0_256(a).wrapping_add(maj!(a,b,c));
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(t1);
+            d = c;
+            c = b;
+            b = a;
+            a = t1.wrapping_add(t2);
+
+            let t1 = h.wrapping_add(big_s1_256(e))
+                      .wrapping_add(ch!(e, f, g))
+                      .wrapping_add(K_256[4*t+3])
+                      .wrapping_add(x[3]);
             let t2 = big_s0_256(a).wrapping_add(maj!(a,b,c));
             h = g;
             g = f;
