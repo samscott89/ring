@@ -48,14 +48,16 @@ macro_rules! maj {
 // SHA-256 functions
 #[inline] fn big_s0_256(x: u32) -> u32   { ((x.rotate_right(9)  ^ x).rotate_right(11) ^ x).rotate_right(2) }
 #[inline] fn big_s1_256(x: u32) -> u32   { ((x.rotate_right(14) ^ x).rotate_right(5)  ^ x).rotate_right(6) }
-#[inline] fn small_s0_256(x: u32) -> u32 { x.rotate_right(7)  ^ x.rotate_right(18) ^ (x >> 3) }
-#[inline] fn small_s1_256(x: u32) -> u32 { x.rotate_right(17) ^ x.rotate_right(19) ^ (x >> 10) }
+#[inline] fn small_s0_256(x: u32) -> u32 {  (x.rotate_right(11) ^ x).rotate_right(7)  ^ (x >> 3) }
+#[inline] fn small_s1_256(x: u32) -> u32 {  (x.rotate_right(2)  ^ x).rotate_right(17) ^ (x >> 10) }
 
 // SHA-512 functions
-#[inline] fn big_s0_512(x: u64) -> u64   { ((x.rotate_right(5)  ^ x).rotate_right(6) ^ x).rotate_right(28) }
-#[inline] fn big_s1_512(x: u64) -> u64   { ((x.rotate_right(23) ^ x).rotate_right(4) ^ x).rotate_right(14) }
-#[inline] fn small_s0_512(x: u64) -> u64 { x.rotate_right(1)  ^ x.rotate_right(8)  ^ (x >> 7) }
-#[inline] fn small_s1_512(x: u64) -> u64 { x.rotate_right(19) ^ x.rotate_right(61) ^ (x >> 6) }
+#[inline] fn big_s0_512(x: u64) -> u64   { ((x.rotate_right(5)  ^ x).rotate_right(6)  ^ x).rotate_right(28) }
+#[inline] fn big_s1_512(x: u64) -> u64   { ((x.rotate_right(23) ^ x).rotate_right(4)  ^ x).rotate_right(14) }
+#[inline] fn small_s0_512(x: u64) -> u64 {  (x.rotate_right(7)  ^ x).rotate_right(1)  ^ (x >> 7) }
+#[inline] fn small_s1_512(x: u64) -> u64 {  (x.rotate_right(42) ^ x).rotate_right(19) ^ (x >> 6) }
+
+
 
 pub unsafe extern fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
                                              data: *const u8,
