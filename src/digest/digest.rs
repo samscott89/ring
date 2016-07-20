@@ -283,8 +283,13 @@ pub struct Algorithm {
     /// The length of the length in the padding.
     len_len: usize,
 
+    #[cfg(not(feature="no_asm"))]
     block_data_order: unsafe extern fn(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8,
                                        num: c::size_t),
+    #[cfg(feature="no_asm")]
+    block_data_order: unsafe fn(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8,
+                         num: c::size_t),
+
     format_output: fn (input: &[u64; MAX_CHAINING_LEN / 8]) ->
                        [u64; MAX_OUTPUT_LEN / 8],
 
@@ -454,6 +459,17 @@ pub extern fn SHA512_4(out: *mut u8, out_len: c::size_t,
     polyfill::slice::fill_from_slice(out, digest);
 }
 
+#[cfg(feature="no_asm")]
+unsafe fn sha256_block_data_order(_: &mut [u64; MAX_CHAINING_LEN / 8], _: *const u8, _: c::size_t){
+    unimplemented!();
+}
+
+#[cfg(feature="no_asm")]
+unsafe fn sha512_block_data_order(_: &mut [u64; MAX_CHAINING_LEN / 8], _: *const u8, _: c::size_t){
+    unimplemented!();
+}
+
+#[cfg(not(feature="no_asm"))]
 extern {
     fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8, num: c::size_t);
     fn sha512_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8, num: c::size_t);

@@ -20,6 +20,7 @@ untrusted = "0.2"
 default = ["use_heap"]
 disable_dev_urandom_fallback = []
 internal_benches = []
+no_asm = []
 rsa_signing = []
 slow_tests = []
 test_logging = []
