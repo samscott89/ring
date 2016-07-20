@@ -93,6 +93,8 @@
 #![cfg_attr(feature = "internal_benches", allow(unstable_features))]
 #![cfg_attr(feature = "internal_benches", feature(test))]
 
+#![cfg_attr(feature = "no_asm", allow(dead_code))]
+
 #[cfg(feature = "internal_benches")]
 extern crate test as bench;
 
@@ -110,8 +112,12 @@ extern crate untrusted;
 #[macro_use] mod bssl;
 #[macro_use] mod polyfill;
 
+#[cfg(not(feature = "no_asm"))]
 #[path = "aead/aead.rs"] pub mod aead;
+
+#[cfg(not(feature = "no_asm"))]
 pub mod agreement;
+
 mod c;
 pub mod constant_time;
 
@@ -121,17 +127,20 @@ pub mod der;
 pub mod error;
 
 #[path = "digest/digest.rs"] pub mod digest;
+
+#[cfg(not(feature = "no_asm"))]
 #[path = "ec/ec.rs"] mod ec;
+
 pub mod hkdf;
 pub mod hmac;
 mod init;
 pub mod pbkdf2;
 pub mod rand;
 
-#[cfg(feature = "use_heap")]
-#[path = "rsa/rsa.rs"]
-mod rsa;
+#[cfg(not(feature = "no_asm"))]
+#[cfg(feature = "use_heap")] mod rsa;
 
+#[cfg(not(feature = "no_asm"))]
 pub mod signature;
 
 #[cfg(any(feature = "use_heap", test))]
@@ -139,6 +148,7 @@ pub mod test;
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "no_asm"))]
     bssl_test_rng!(test_bn, bssl_bn_test_main);
     bssl_test!(test_constant_time, bssl_constant_time_test_main);
 }

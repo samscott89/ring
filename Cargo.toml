@@ -22,6 +22,7 @@ lazy_static = "0.2.1"
 default = ["use_heap", "dev_urandom_fallback"]
 dev_urandom_fallback = []
 internal_benches = []
+no_asm = []
 rsa_signing = []
 slow_tests = []
 test_logging = []

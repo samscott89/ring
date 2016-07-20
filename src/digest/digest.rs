@@ -113,10 +113,7 @@ impl Context {
                 &mut self.pending[self.num_pending..self.algorithm.block_len],
                 &data[..to_copy]);
 
-            unsafe {
-                (self.algorithm.block_data_order)(&mut self.state,
-                                                  self.pending.as_ptr(), 1);
-            }
+            (self.algorithm.block_data_order)(&mut self.state, &self.pending, 1);
             self.completed_data_blocks =
                 self.completed_data_blocks.checked_add(1).unwrap();
 
@@ -127,11 +124,8 @@ impl Context {
         let num_blocks = remaining.len() / self.algorithm.block_len;
         let num_to_save_for_later = remaining.len() % self.algorithm.block_len;
         if num_blocks > 0 {
-            unsafe {
-                (self.algorithm.block_data_order)(&mut self.state,
-                                                  remaining.as_ptr(),
-                                                  num_blocks);
-            }
+            (self.algorithm.block_data_order)(&mut self.state, &remaining,
+                                            num_blocks);
             self.completed_data_blocks =
                 self.completed_data_blocks.checked_add(widen_u64(num_blocks))
                                           .unwrap();
@@ -160,10 +154,9 @@ impl Context {
         if padding_pos > self.algorithm.block_len - self.algorithm.len_len {
             polyfill::slice::fill(
                 &mut self.pending[padding_pos..self.algorithm.block_len], 0);
-            unsafe {
-                (self.algorithm.block_data_order)(&mut self.state,
-                                                  self.pending.as_ptr(), 1);
-            }
+
+            (self.algorithm.block_data_order)(&mut self.state, &self.pending, 1);
+
             // We don't increase |self.completed_data_blocks| because the
             // padding isn't data, and so it isn't included in the data length.
             padding_pos = 0;
@@ -184,10 +177,8 @@ impl Context {
             *b = completed_data_bits as u8;
             completed_data_bits /= 0x100;
         }
-        unsafe {
-            (self.algorithm.block_data_order)(&mut self.state,
-                                              self.pending.as_ptr(), 1);
-        }
+        (self.algorithm.block_data_order)(&mut self.state, &self.pending, 1);
+
 
         Digest {
             algorithm: self.algorithm,
@@ -283,10 +274,11 @@ pub struct Algorithm {
     /// The length of the length in the padding.
     len_len: usize,
 
-    block_data_order: unsafe extern fn(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8,
-                                       num: c::size_t),
-    format_output: fn (input: &[u64; MAX_CHAINING_LEN / 8]) ->
-                       [u64; MAX_OUTPUT_LEN / 8],
+    block_data_order: fn(state: &mut [u64; MAX_CHAINING_LEN / 8], data: &[u8],
+                         num: c::size_t),
+
+    format_output: fn(input: &[u64; MAX_CHAINING_LEN / 8])
+                      -> [u64; MAX_OUTPUT_LEN / 8],
 
     initial_state: [u64; MAX_CHAINING_LEN / 8],
 
@@ -323,7 +315,7 @@ pub static SHA256: Algorithm = Algorithm {
     chaining_len: 256 / 8,
     block_len: 512 / 8,
     len_len: 64 / 8,
-    block_data_order: sha256_block_data_order,
+    block_data_order: sha2::block_data_order_256,
     format_output: sha256_format_output,
     initial_state: [
         u32x2!(0x6a09e667u32, 0xbb67ae85u32),
@@ -344,7 +336,7 @@ pub static SHA384: Algorithm = Algorithm {
     chaining_len: 512 / 8,
     block_len: 1024 / 8,
     len_len: 128 / 8,
-    block_data_order: sha512_block_data_order,
+    block_data_order: sha2::block_data_order_512,
     format_output: sha512_format_output,
     initial_state: [
         0xcbbb9d5dc1059ed8,
@@ -367,7 +359,7 @@ pub static SHA512: Algorithm = Algorithm {
     chaining_len: 512 / 8,
     block_len: 1024 / 8,
     len_len: 128 / 8,
-    block_data_order: sha512_block_data_order,
+    block_data_order: sha2::block_data_order_512,
     format_output: sha512_format_output,
     initial_state: [
         0x6a09e667f3bcc908,
@@ -456,9 +448,31 @@ pub extern fn SHA512_4(out: *mut u8, out_len: c::size_t,
     polyfill::slice::fill_from_slice(out, digest);
 }
 
-extern {
-    fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8, num: c::size_t);
-    fn sha512_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8], data: *const u8, num: c::size_t);
+#[cfg(not(feature="no_asm"))]
+mod sha2 {
+    use c;
+    use super::MAX_CHAINING_LEN;
+
+    pub fn block_data_order_256(state: &mut [u64; MAX_CHAINING_LEN / 8],
+                                data: &[u8], num: c::size_t) {
+        unsafe {
+            sha256_block_data_order(state, data.as_ptr(), num);
+        }
+    }
+
+    pub fn block_data_order_512(state: &mut [u64; MAX_CHAINING_LEN / 8],
+                                data: &[u8], num: c::size_t) {
+        unsafe {
+            sha512_block_data_order(state, data.as_ptr(), num);
+        }
+    }
+
+    extern {
+        fn sha256_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
+                                   data: *const u8, num: c::size_t);
+        fn sha512_block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
+                                   data: *const u8, num: c::size_t);
+    }
 }
 
 #[cfg(test)]

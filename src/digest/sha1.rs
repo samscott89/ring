@@ -14,7 +14,6 @@
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 use {c, polyfill};
-use core;
 use core::num::Wrapping;
 use super::MAX_CHAINING_LEN;
 
@@ -33,23 +32,17 @@ type W32 = Wrapping<u32>;
 /// This implementation therefore favors size and simplicity over speed.
 /// Unlike SHA-256, SHA-384, and SHA-512,
 /// there is no assembly language implementation.
-pub unsafe extern fn block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
-                                      data: *const u8,
-                                      num: c::size_t) {
-    let data = data as *const [u8; BLOCK_LEN];
-    let blocks = core::slice::from_raw_parts(data, num);
-    block_data_order_safe(state, blocks)
-}
-
-fn block_data_order_safe(state: &mut [u64; MAX_CHAINING_LEN / 8],
-                         blocks: &[[u8; BLOCK_LEN]]) {
+pub fn block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
+                             data: &[u8],
+                             num: c::size_t) {
     let state = polyfill::slice::u64_as_u32_mut(state);
     let state = polyfill::slice::as_wrapping_mut(state);
     let state = &mut state[..CHAINING_WORDS];
     let state = slice_as_array_ref_mut!(state, CHAINING_WORDS).unwrap();
 
     let mut w: [W32; 80] = [Wrapping(0); 80];
-    for block in blocks {
+    for i in 0..num {
+        let block = &data[i * BLOCK_LEN..][..BLOCK_LEN];
         for t in 0..16 {
             let word = slice_as_array_ref!(&block[t * 4..][..4], 4).unwrap();
             w[t] = Wrapping(polyfill::slice::u32_from_be_u8(word))
