@@ -16,6 +16,7 @@
 
 use {aead, c, polyfill};
 use core;
+use std::slice;
 
 const CHACHA20_KEY_LEN: usize = 256 / 8;
 const POLY1305_STATE_LEN: usize = 256;
@@ -242,9 +243,83 @@ fn poly1305_update(state: &mut [u8; POLY1305_STATE_LEN], in_: &[u8]) {
     }
 }
 
+macro_rules! quarter_round {
+    ($st:ident, $i:expr, $j:expr, $k:expr, $l:expr) => (
+        quarter_round!($st[$i], $st[$j], $st[$k], $st[$l]);
+    );
+
+    ($a:expr, $b:expr, $c:expr, $d:expr) => (
+        $a = $a.wrapping_add($b); $d ^= $a; $d = $d.rotate_left(16);
+        $c = $c.wrapping_add($d); $b ^= $c; $b = $b.rotate_left(12);
+        $a = $a.wrapping_add($b); $d ^= $a; $d = $d.rotate_left(8);
+        $c = $c.wrapping_add($d); $b ^= $c; $b = $b.rotate_left(7);
+    )
+}
+
+
+fn chacha20_block(key: &[u32; CHACHA20_KEY_LEN / 4], counter: u32,nonce: &[u32; 3])
+                  -> [u8; 64] {
+    // Initialise state
+    let initial_state: [u32; 16] = [
+        0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
+        key[0], key[1], key[2], key[3],
+        key[4], key[5], key[6], key[7],
+        counter, nonce[0], nonce[1], nonce[2]
+    ];
+
+    let mut state = initial_state.clone();
+
+    for _ in 0..10 {
+        quarter_round!(state, 0, 4, 8,12);
+        quarter_round!(state, 1, 5, 9,13);
+        quarter_round!(state, 2, 6,10,14);
+        quarter_round!(state, 3, 7,11,15);
+        quarter_round!(state, 0, 5,10,15);
+        quarter_round!(state, 1, 6,11,12);
+        quarter_round!(state, 2, 7, 8,13);
+        quarter_round!(state, 3, 4, 9,14);
+    }
+
+    let mut output = [0u8; 64];
+    for i in 0..16 {
+        let mut block = state[i].wrapping_add(initial_state[i]);
+        output[4*i] = (block & 0xff) as u8;
+        block >>= 8;
+        output[4*i+1] = (block & 0xff) as u8;
+        block >>= 8;
+        output[4*i+2] = (block & 0xff) as u8;
+        block >>= 8;
+        output[4*i+3] = (block & 0xff) as u8;
+    }
+
+    output
+}
+
+#[allow(non_snake_case)]
+unsafe fn ChaCha20_ctr32(out: *mut u8, in_: *const u8, in_len: c::size_t,
+                  key: &[u32; CHACHA20_KEY_LEN / 4], counter: &[u32; 4]){
+    let mut out = slice::from_raw_parts_mut(out, in_len);
+    let in_ = slice::from_raw_parts(in_, in_len);
+    let ctr = counter[0];
+    let nonce = [counter[1], counter[2], counter[3]];
+    for j in 0..(in_len/64) {
+        let key_stream = chacha20_block(key, ctr + j as u32, &nonce);
+        for i in 0..64 {
+            out[j*64 + i] = in_[j*64 + i] ^ key_stream[i];
+        }
+    }
+    if in_len % 64 != 0 {
+        let j = in_len/64;
+        let key_stream = chacha20_block(key, ctr + j as u32, &nonce);
+        for i in 0..in_len%64 {
+            out[j*64 + i] = in_[j*64 + i] ^ key_stream[i];
+        }
+    }
+}
+
 extern {
-    fn ChaCha20_ctr32(out: *mut u8, in_: *const u8, in_len: c::size_t,
-                      key: &[u32; CHACHA20_KEY_LEN / 4], counter: &[u32; 4]);
+    // fn ChaCha20_ctr32(out: *mut u8, in_: *const u8, in_len: c::size_t,
+    //                   key: &[u32; CHACHA20_KEY_LEN / 4], counter: &[u32; 4]);
     fn CRYPTO_poly1305_init(state: &mut [u8; POLY1305_STATE_LEN],
                             key: &[u8; POLY1305_KEY_LEN]);
     fn CRYPTO_poly1305_finish(state: &mut [u8; POLY1305_STATE_LEN],
