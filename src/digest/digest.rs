@@ -39,6 +39,9 @@ macro_rules! u32x2 {
 
 mod sha1;
 
+#[cfg(feature="no_asm")]
+mod sha2;
+
 /// A context for multi-step (Init-Update-Finish) digest calculations.
 ///
 /// C analog: `EVP_MD_CTX`.
