@@ -39,7 +39,7 @@ macro_rules! u32x2 {
 
 mod sha1;
 
-#[cfg(feature="no_asm")]
+#[cfg(not(feature="asm"))]
 mod sha2;
 
 /// A context for multi-step (Init-Update-Finish) digest calculations.
@@ -451,7 +451,7 @@ pub extern fn SHA512_4(out: *mut u8, out_len: c::size_t,
     polyfill::slice::fill_from_slice(out, digest);
 }
 
-#[cfg(not(feature="no_asm"))]
+#[cfg(feature = "asm")]
 mod sha2 {
     use c;
     use super::MAX_CHAINING_LEN;

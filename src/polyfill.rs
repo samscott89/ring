@@ -19,6 +19,7 @@
 
 use core;
 
+#[cfg(not(feature = "no_asm"))]
 #[inline(always)]
 pub fn u64_from_usize(x: usize) -> u64 {
     x as u64
@@ -37,7 +38,7 @@ pub fn wrapping_rotate_left_u32(x: core::num::Wrapping<u32>, n: u32)
 pub mod slice {
     use core;
 
-    #[cfg(feature="no_asm")]
+    #[cfg(not(feature="asm"))]
     #[inline(always)]
     pub fn u64_from_be_u8(buffer: &[u8; 8]) -> u64 {
         u64::from(buffer[0]) << 56 |
@@ -95,6 +96,7 @@ pub mod slice {
     }
 
     // https://internals.rust-lang.org/t/safe-trasnsmute-for-slices-e-g-u64-u32-particularly-simd-types/2871
+    #[cfg(not(feature = "no_asm"))]
     #[inline(always)]
     pub fn u64_as_u8_mut<'a>(src: &'a mut [u64]) -> &'a mut [u8] {
         unsafe {

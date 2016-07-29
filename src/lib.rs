@@ -93,8 +93,6 @@
 #![cfg_attr(feature = "internal_benches", allow(unstable_features))]
 #![cfg_attr(feature = "internal_benches", feature(test))]
 
-#![cfg_attr(feature = "no_asm", allow(dead_code))]
-
 #[cfg(feature = "internal_benches")]
 extern crate test as bench;
 
