@@ -134,9 +134,7 @@ pub fn block_data_order_256(state: &mut [u64; MAX_CHAINING_LEN / 8],
 }
 
 pub fn block_data_order_512(state: &mut [u64; MAX_CHAINING_LEN / 8],
-                            data: &[u8],
-                            num: c::size_t) {
-
+                            data: &[u8], num: c::size_t) {
     // Converts state to array of Wrapping<u64> values.
     let state = polyfill::slice::as_wrapping_mut(state);
     let state = &mut state[..CHAINING_WORDS_512];
