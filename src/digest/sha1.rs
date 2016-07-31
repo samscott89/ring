@@ -14,18 +14,15 @@
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 use {c, polyfill};
-use core::num::Wrapping;
 use super::MAX_CHAINING_LEN;
 
 pub const BLOCK_LEN: usize = 512 / 8;
 pub const CHAINING_LEN: usize = 160 / 8;
 const CHAINING_WORDS: usize = CHAINING_LEN / 4;
 
-type W32 = Wrapping<u32>;
-
-#[inline] fn ch(x: W32, y: W32, z: W32) -> W32 { (x & y) | (!x & z) }
-#[inline] fn parity(x: W32, y: W32, z: W32) -> W32 { x ^ y ^ z }
-#[inline] fn maj(x: W32, y: W32, z: W32) -> W32 { (x & y) | (x & z) | (y & z) }
+#[inline] fn ch(x: u32, y: u32, z: u32) -> u32 { (x & y) | (!x & z) }
+#[inline] fn parity(x: u32, y: u32, z: u32) -> u32 { x ^ y ^ z }
+#[inline] fn maj(x: u32, y: u32, z: u32) -> u32 { (x & y) | (x & z) | (y & z) }
 
 /// The main purpose in retaining this is to support legacy protocols and OCSP,
 /// none of which need a fast SHA-1 implementation.
@@ -36,20 +33,18 @@ pub fn block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
                              data: &[u8],
                              num: c::size_t) {
     let state = polyfill::slice::u64_as_u32_mut(state);
-    let state = polyfill::slice::as_wrapping_mut(state);
     let state = &mut state[..CHAINING_WORDS];
     let state = slice_as_array_ref_mut!(state, CHAINING_WORDS).unwrap();
 
-    let mut w: [W32; 80] = [Wrapping(0); 80];
+    let mut w: [u32; 80] = [0; 80];
     for i in 0..num {
         let block = &data[i * BLOCK_LEN..][..BLOCK_LEN];
         for t in 0..16 {
             let word = slice_as_array_ref!(&block[t * 4..][..4], 4).unwrap();
-            w[t] = Wrapping(polyfill::slice::u32_from_be_u8(word))
+            w[t] = polyfill::slice::u32_from_be_u8(word);
         }
         for t in 16..80 {
-            let wt = w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16];
-            w[t] = polyfill::wrapping_rotate_left_u32(wt, 1);
+            w[t] = (w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16]).rotate_left(1);
         }
 
         let mut a = state[0];
@@ -66,19 +61,22 @@ pub fn block_data_order(state: &mut [u64; MAX_CHAINING_LEN / 8],
                 60...79 => (0xca62c1d6, parity(b, c, d)),
                 _ => unreachable!()
             };
-            let tt = polyfill::wrapping_rotate_left_u32(a, 5) + f + e +
-                     Wrapping(k) + w[t];
+            let tt = a.rotate_left(5)
+                      .wrapping_add(f)
+                      .wrapping_add(e)
+                      .wrapping_add(k)
+                      .wrapping_add(w[t]);
             e = d;
             d = c;
-            c = polyfill::wrapping_rotate_left_u32(b, 30);
+            c = b.rotate_left(30);
             b = a;
             a = tt;
         }
 
-        state[0] = state[0] + a;
-        state[1] = state[1] + b;
-        state[2] = state[2] + c;
-        state[3] = state[3] + d;
-        state[4] = state[4] + e;
+        state[0] = state[0].wrapping_add(a);
+        state[1] = state[1].wrapping_add(b);
+        state[2] = state[2].wrapping_add(c);
+        state[3] = state[3].wrapping_add(d);
+        state[4] = state[4].wrapping_add(e);
     }
 }
