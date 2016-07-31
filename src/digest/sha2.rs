@@ -14,10 +14,12 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+extern crate num_traits;
+
 use c;
 use core::num::Wrapping;
 use polyfill;
-
+use self::num_traits::PrimInt;
 use super::MAX_CHAINING_LEN;
 
 // SHA-256: 512-bit blocks.
@@ -38,44 +40,50 @@ const CHAINING_WORDS_512: usize = CHAINING_LEN_512 / 8;
 type W32 = Wrapping<u32>;
 type W64 = Wrapping<u64>;
 
-macro_rules! ch {
-    ($x:expr, $y:expr, $z:expr) => (($x & $y) ^ (!$x & $z))
+// Same as the same-named function in `ring::digest::sha1`.
+#[inline(always)]
+fn ch<T: PrimInt>(Wrapping(x): Wrapping<T>, Wrapping(y): Wrapping<T>,
+                  Wrapping(z): Wrapping<T>) -> Wrapping<T> {
+    Wrapping((x & y) ^ (!x & z))
 }
-macro_rules! parity {
-    ($x:expr, $y:expr, $z:expr) => ($x ^ $y ^ $z)
+
+// Same as the same-named function in `ring::digest::sha1`.
+#[inline(always)]
+fn maj<T: PrimInt>(Wrapping(x): Wrapping<T>, Wrapping(y): Wrapping<T>,
+                   Wrapping(z): Wrapping<T>) -> Wrapping<T> {
+    Wrapping((x & y) ^ (x & z) ^ (y & z))
 }
-macro_rules! maj {
-    ($x:expr, $y:expr, $z:expr) => (($x & $y) ^ ($x & $z) ^ ($y & $z))
-}
-macro_rules! rotr {
-    ($x:expr, $n:expr) => (Wrapping($x.0.rotate_right($n)))
+
+#[inline(always)]
+fn rotr<T: PrimInt>(Wrapping(x): Wrapping<T>, n: u32) -> Wrapping<T> {
+    Wrapping(x.rotate_right(n))
 }
 
 // SHA256 sigma functions
 #[inline]
-fn big_s0_256(x: W32) -> W32   { rotr!(rotr!(rotr!(x, 9) ^ x, 11) ^ x, 2) }
+fn big_s0_256(x: W32) -> W32   { rotr(rotr(rotr(x, 9) ^ x, 11) ^ x, 2) }
 
 #[inline]
-fn big_s1_256(x: W32) -> W32   { rotr!(rotr!(rotr!(x, 14) ^ x, 5) ^ x, 6) }
+fn big_s1_256(x: W32) -> W32   { rotr(rotr(rotr(x, 14) ^ x, 5) ^ x, 6) }
 
 #[inline]
-fn small_s0_256(x: W32) -> W32 { rotr!((rotr!(x, 11) ^ x), 7)  ^ (x >> 3) }
+fn small_s0_256(x: W32) -> W32 { rotr((rotr(x, 11) ^ x), 7)  ^ (x >> 3) }
 
 #[inline]
-fn small_s1_256(x: W32) -> W32 { rotr!((rotr!(x, 2)  ^ x), 17) ^ (x >> 10) }
+fn small_s1_256(x: W32) -> W32 { rotr((rotr(x, 2)  ^ x), 17) ^ (x >> 10) }
 
 // SHA512 sigma functions
 #[inline]
-fn big_s0_512(x: W64) -> W64   { rotr!(rotr!(rotr!(x, 5) ^ x, 6) ^ x, 28) }
+fn big_s0_512(x: W64) -> W64   { rotr(rotr(rotr(x, 5) ^ x, 6) ^ x, 28) }
 
 #[inline]
-fn big_s1_512(x: W64) -> W64   { rotr!(rotr!(rotr!(x, 23) ^ x, 4) ^ x, 14) }
+fn big_s1_512(x: W64) -> W64   { rotr(rotr(rotr(x, 23) ^ x, 4) ^ x, 14) }
 
 #[inline]
-fn small_s0_512(x: W64) -> W64 { rotr!((rotr!(x, 7) ^ x), 1)  ^ (x >> 7) }
+fn small_s0_512(x: W64) -> W64 { rotr((rotr(x, 7) ^ x), 1)  ^ (x >> 7) }
 
 #[inline]
-fn small_s1_512(x: W64) -> W64 { rotr!((rotr!(x, 42) ^ x), 19)  ^ (x >> 6) }
+fn small_s1_512(x: W64) -> W64 { rotr((rotr(x, 42) ^ x), 19)  ^ (x >> 6) }
 
 pub fn block_data_order_256(state: &mut [u64; MAX_CHAINING_LEN / 8],
                             data: &[u8],
@@ -109,10 +117,9 @@ pub fn block_data_order_256(state: &mut [u64; MAX_CHAINING_LEN / 8],
         let mut h = state[7];
 
         for t in 0..64 {
-            let t1 = h + big_s1_256(e) + ch!(e, f, g)
-                       + Wrapping(K_256[t]) + w[t];
-
-            let t2 = big_s0_256(a) + maj!(a,b,c);
+            let t1 = h + big_s1_256(e) + ch(e, f, g) + Wrapping(K_256[t]) +
+                     w[t];
+            let t2 = big_s0_256(a) + maj(a,b,c);
             h = g;
             g = f;
             f = e;
@@ -162,10 +169,9 @@ pub fn block_data_order_512(state: &mut [u64; MAX_CHAINING_LEN / 8],
         let mut h = state[7];
 
         for t in 0..80 {
-            let t1 = h + big_s1_512(e) + ch!(e, f, g) + Wrapping(K_512[t])
-                       + w[t];
-
-            let t2 = big_s0_512(a) + maj!(a,b,c);
+            let t1 = h + big_s1_512(e) + ch(e, f, g) + Wrapping(K_512[t]) +
+                     w[t];
+            let t2 = big_s0_512(a) + maj(a,b,c);
             h = g;
             g = f;
             f = e;
