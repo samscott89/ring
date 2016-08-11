@@ -14,12 +14,10 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-extern crate num_traits;
-
 use c;
 use polyfill;
-use self::num_traits::PrimInt;
 use super::MAX_CHAINING_LEN;
+use core::ops::{BitAnd, BitXor, Not};
 
 // SHA-256: state is 256 bits.
 pub const CHAINING_LEN_256: usize = 256 / 8;
@@ -28,25 +26,18 @@ pub const CHAINING_LEN_512: usize = 512 / 8;
 
 // Same as the same-named function in `ring::digest::sha1`.
 #[inline(always)]
-fn ch<T: PrimInt>(x: T, y: T, z: T) -> T {
+fn ch<T>(x: T, y: T, z: T) -> T
+         where T: BitAnd<Output=T> + BitXor<Output=T> + Copy + Not<Output=T> {
     (x & y) ^ (!x & z)
 }
 
 // Same as the same-named function in `ring::digest::sha1`.
 #[inline(always)]
-fn maj<T: PrimInt>(x: T, y: T, z: T) -> T {
+fn maj<T>(x: T, y: T, z: T) -> T
+          where T: BitAnd<Output=T> + BitXor<Output=T> + Copy {
     (x & y) ^ (x & z) ^ (y & z)
 }
 
-#[inline]
-fn big_s<T: PrimInt>(x: T, (a, b, c): (u32, u32, u32)) -> T {
-    ((x.rotate_right(a) ^ x).rotate_right(b) ^ x).rotate_right(c)
-}
-
-#[inline]
-fn small_s<T: PrimInt>(x: T, (a, b, c): (u32, u32, usize)) -> T {
-    (x.rotate_right(a) ^ x).rotate_right(b) ^ (x >> c)
-}
 
 struct SHA2 {
     chaining_words: usize,
@@ -81,11 +72,22 @@ const SHA512: SHA2 = SHA2 {
 
 // XXX: This is a macro because Rust doesn't support abstracting over arrays
 // and because `core::mem::size_of` can't be used in constant expressions.
-// TODO: Replace this iwth a function once Rust adds those features.
+// TODO: Replace this with a function once Rust adds those features.
 macro_rules! block_data_order {
     ($SHA:expr, $K:expr, $state:expr, $data:expr, $num:expr, $Word:ty,
      $BPW:expr, $from_be:expr) => {
         {
+            // XXX: These are currently inline in the method to avoid needing to
+            // import another crate (num-traits) in order to be able to perform
+            // `rotate_right` on a generic number.
+            fn big_s(x: $Word, (a, b, c): (u32, u32, u32)) -> $Word {
+                ((x.rotate_right(a) ^ x).rotate_right(b) ^ x).rotate_right(c)
+            }
+
+            fn small_s(x: $Word, (a, b, c): (u32, u32, usize)) -> $Word {
+                (x.rotate_right(a) ^ x).rotate_right(b) ^ (x >> c)
+            }
+
             let state = &mut $state[..$SHA.chaining_words];
             let state =
                 slice_as_array_ref_mut!(state, $SHA.chaining_words).unwrap();
