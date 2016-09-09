@@ -88,6 +88,8 @@
 //!     }
 //! }
 //!
+//! 
+//! # #[cfg(not(feature = "native_rust"))]
 //! fn main() {
 //!     // Normally these parameters would be loaded from a configuration file.
 //!     let mut db = PasswordDatabase {
@@ -111,6 +113,8 @@
 //!     // An attempt to log in with the right password succeeds.
 //!     assert!(db.verify_password("alice", "@74d7]404j|W}6u").is_ok());
 //! }
+//! # #[cfg(feature = "native_rust")]
+//! # fn main() { }
 
 use {constant_time, digest, error, hmac, polyfill};
 
@@ -263,6 +267,7 @@ pub static HMAC_SHA256: PRF = PRF { digest_alg: &digest::SHA256 };
 /// HMAC-SHA512.
 pub static HMAC_SHA512: PRF = PRF { digest_alg: &digest::SHA512 };
 
+#[cfg(not(feature = "native_rust"))]
 #[cfg(test)]
 mod tests {
     use {error, pbkdf2, test};
